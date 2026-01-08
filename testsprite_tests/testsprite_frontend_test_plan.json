@@ -1,0 +1,572 @@
+[
+  {
+    "id": "TC001",
+    "title": "Successful login for each user role",
+    "description": "Verify that buyers, sellers, affiliates, and admins can successfully authenticate using valid credentials with Supabase Auth and receive proper role-based access.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Enter valid credentials for buyer role and submit"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify authentication success and buyer dashboard access"
+      },
+      {
+        "type": "action",
+        "description": "Logout and repeat login with valid seller credentials"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify authentication success and seller dashboard access"
+      },
+      {
+        "type": "action",
+        "description": "Logout and repeat login with valid affiliate credentials"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify authentication success and affiliate dashboard access"
+      },
+      {
+        "type": "action",
+        "description": "Logout and repeat login with valid admin credentials"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify authentication success and admin dashboard access"
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Login failure with invalid credentials",
+    "description": "Verify that login attempts with invalid username or password fail gracefully with appropriate error messages.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Enter incorrect username and/or password"
+      },
+      {
+        "type": "action",
+        "description": "Click login button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify login failure message is shown and no access granted"
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Product search and filtering accuracy",
+    "description": "Verify that product search returns relevant products in real-time, filters by price and categories work correctly, and displayed results match filter criteria.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open marketplace homepage"
+      },
+      {
+        "type": "action",
+        "description": "Enter a search keyword for product names"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify search results display products containing keyword"
+      },
+      {
+        "type": "action",
+        "description": "Apply price filter with min and max values"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify displayed products all fall within price range"
+      },
+      {
+        "type": "action",
+        "description": "Apply category filter selecting multiple categories"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify displayed products belong only to selected categories"
+      },
+      {
+        "type": "action",
+        "description": "Clear filters and search"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all products are displayed again with no filters"
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Real-time chat between buyer and seller",
+    "description": "Verify real-time message exchange, offer creation, acceptance, and message read status updates in chat sessions between buyers and sellers.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Buyer navigates to product detail and opens chat with seller"
+      },
+      {
+        "type": "action",
+        "description": "Buyer sends a message"
+      },
+      {
+        "type": "assertion",
+        "description": "Seller receives the message instantly with notification"
+      },
+      {
+        "type": "action",
+        "description": "Seller sends message reply"
+      },
+      {
+        "type": "assertion",
+        "description": "Buyer receives reply instantly"
+      },
+      {
+        "type": "action",
+        "description": "Buyer creates an offer specifying price and quantity"
+      },
+      {
+        "type": "assertion",
+        "description": "Seller receives offer and notification"
+      },
+      {
+        "type": "action",
+        "description": "Seller accepts the offer"
+      },
+      {
+        "type": "assertion",
+        "description": "Buyer receives acceptance message and offer status update"
+      },
+      {
+        "type": "assertion",
+        "description": "Chat read status updates are reflected correctly for both buyer and seller"
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Product CRUD operations with validations",
+    "description": "Verify seller can add, edit, and delete products including required fields, image uploads, MOQ and commission settings; updates reflect instantly in listings.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Seller navigates to Add Product page"
+      },
+      {
+        "type": "action",
+        "description": "Enter valid product details including images, MOQ, and commission"
+      },
+      {
+        "type": "action",
+        "description": "Submit the new product"
+      },
+      {
+        "type": "assertion",
+        "description": "Product is created and visible in seller's product list"
+      },
+      {
+        "type": "action",
+        "description": "Seller navigates to Edit Product page for existing product"
+      },
+      {
+        "type": "action",
+        "description": "Update product details and save"
+      },
+      {
+        "type": "assertion",
+        "description": "Product details update immediately in product listing"
+      },
+      {
+        "type": "action",
+        "description": "Seller deletes a product"
+      },
+      {
+        "type": "assertion",
+        "description": "Product is removed from product listing"
+      },
+      {
+        "type": "action",
+        "description": "Attempt product creation/edit with missing required fields"
+      },
+      {
+        "type": "assertion",
+        "description": "Validation errors are shown preventing submission"
+      },
+      {
+        "type": "action",
+        "description": "Attempt image upload with invalid format or exceeding size limits"
+      },
+      {
+        "type": "assertion",
+        "description": "Proper error messages are displayed and upload is rejected"
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Shopping cart validation and MOQ enforcement",
+    "description": "Verify that buyer cart respects product MOQ rules, disables ordering below MOQ unless a negotiated offer exists, and updates cart totals accurately.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Buyer adds product to cart with quantity below MOQ"
+      },
+      {
+        "type": "assertion",
+        "description": "Adding to cart is blocked with an appropriate notification"
+      },
+      {
+        "type": "action",
+        "description": "Buyer adds product to cart with quantity equal or above MOQ"
+      },
+      {
+        "type": "assertion",
+        "description": "Item is successfully added and cart updates accordingly"
+      },
+      {
+        "type": "action",
+        "description": "Buyer adds product with negotiated offer quantity below MOQ"
+      },
+      {
+        "type": "assertion",
+        "description": "Offer overrides MOQ restriction allowing product addition"
+      },
+      {
+        "type": "action",
+        "description": "Buyer reviews cart and verifies order payment summary"
+      },
+      {
+        "type": "assertion",
+        "description": "Order summary accurately reflects prices, quantities, and commissions"
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Order status transitions and OTP verification",
+    "description": "Verify that OTP codes are generated, sent, verified correctly during shipping and delivery confirming order status transitions and triggering fund release.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Seller marks order as shipped triggering OTP generation"
+      },
+      {
+        "type": "assertion",
+        "description": "OTP code is generated and sent to buyer"
+      },
+      {
+        "type": "action",
+        "description": "Buyer receives OTP and inputs it to confirm delivery"
+      },
+      {
+        "type": "assertion",
+        "description": "OTP is verified successfully and order status updates to delivered"
+      },
+      {
+        "type": "assertion",
+        "description": "Funds are released to seller based on verified OTP confirmation"
+      },
+      {
+        "type": "action",
+        "description": "Buyer attempts delivery confirmation with invalid OTP"
+      },
+      {
+        "type": "assertion",
+        "description": "OTP verification fails and order status does not change"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Affiliate link generation and tracking",
+    "description": "Verify that affiliates can generate unique tracking links, sessionStorage persists referral info, clicks and conversions are tracked accurately, and commissions reflect on affiliate dashboard.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Affiliate generates a new referral link from dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Unique link is created and displayed correctly"
+      },
+      {
+        "type": "action",
+        "description": "Simulate user clicking referral link adding referral info to sessionStorage"
+      },
+      {
+        "type": "assertion",
+        "description": "Referral tracking data is stored correctly and persists"
+      },
+      {
+        "type": "action",
+        "description": "Buyer completes purchase via referral link"
+      },
+      {
+        "type": "assertion",
+        "description": "Conversion is recorded and affiliate commission is updated accordingly"
+      },
+      {
+        "type": "action",
+        "description": "Affiliate views dashboard to verify click and conversion metrics"
+      },
+      {
+        "type": "assertion",
+        "description": "Metrics displayed match tracked referral data"
+      },
+      {
+        "type": "action",
+        "description": "Affiliate submits VIP partnership request"
+      },
+      {
+        "type": "assertion",
+        "description": "Request is received and confirmation shown"
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Dashboards display accurate metrics and allow withdrawal requests",
+    "description": "Verify user role-specific dashboards show up-to-date sales, orders, commissions, and support commission withdrawal requests properly.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as seller and open seller dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Dashboard shows accurate product sales, order statuses, commissions earned"
+      },
+      {
+        "type": "action",
+        "description": "Initiate withdrawal request from seller dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Request is processed and confirmation displayed"
+      },
+      {
+        "type": "action",
+        "description": "Login as affiliate and open affiliate dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Display of link clicks, conversions, and commissions is accurate"
+      },
+      {
+        "type": "action",
+        "description": "Affiliate initiates commission withdrawal request"
+      },
+      {
+        "type": "assertion",
+        "description": "Withdrawal request is accepted and acknowledged"
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Buyer review submission and product rating update",
+    "description": "Verify buyers can submit ratings and reviews after order delivery, reviews appear appropriately, and product rating averages update correctly.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Buyer navigates to delivered order and submits rating and textual review"
+      },
+      {
+        "type": "assertion",
+        "description": "Review is saved and displayed on product detail page"
+      },
+      {
+        "type": "assertion",
+        "description": "Product average rating reflects newly added review"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to submit review without rating or text where applicable"
+      },
+      {
+        "type": "assertion",
+        "description": "Validation prevents incomplete review submissions"
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Cross-role end-to-end commission allocation",
+    "description": "Verify that commissions are correctly allocated and updated across buyer, seller, and affiliate flows from order negotiation through OTP delivery confirmation and payment release.",
+    "category": "integration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Buyer negotiates product offer with seller via chat and accepts it, adding product to cart"
+      },
+      {
+        "type": "action",
+        "description": "Buyer completes order payment including affiliate referral tracking"
+      },
+      {
+        "type": "action",
+        "description": "Seller marks order shipped and OTP is generated, buyer confirms delivery with OTP"
+      },
+      {
+        "type": "assertion",
+        "description": "Seller commission is released after delivery OTP verification"
+      },
+      {
+        "type": "assertion",
+        "description": "Affiliate commission updates according to conversion from referral link"
+      },
+      {
+        "type": "assertion",
+        "description": "Dashboard metrics for seller and affiliate reflect completed transaction commissions"
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Session persistence and access control for authenticated users",
+    "description": "Verify that authenticated sessions persist through navigation and refresh, and that access to pages and API endpoints is properly restricted by user role.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as buyer and navigate through multiple pages"
+      },
+      {
+        "type": "assertion",
+        "description": "User session persists without requiring re-login"
+      },
+      {
+        "type": "action",
+        "description": "Refresh browser page"
+      },
+      {
+        "type": "assertion",
+        "description": "Session remains active and user stays logged in"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to access seller-only pages with buyer credentials"
+      },
+      {
+        "type": "assertion",
+        "description": "Access is denied or redirected appropriately"
+      },
+      {
+        "type": "action",
+        "description": "Attempt API calls restricted to affiliate role with other roles"
+      },
+      {
+        "type": "assertion",
+        "description": "API returns 403 Forbidden or equivalent"
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Error handling when backend services are unavailable",
+    "description": "Verify that the application gracefully handles Supabase service outages or failures during authentication, chat, product CRUD, and order operations with meaningful user feedback.",
+    "category": "error handling",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Simulate Supabase Auth service outage during login"
+      },
+      {
+        "type": "assertion",
+        "description": "Application shows friendly error message and login is prevented"
+      },
+      {
+        "type": "action",
+        "description": "Simulate chat service unavailability during message send"
+      },
+      {
+        "type": "assertion",
+        "description": "User is notified message could not be delivered and retry option is available"
+      },
+      {
+        "type": "action",
+        "description": "Attempt product creation with product service down"
+      },
+      {
+        "type": "assertion",
+        "description": "Error message displayed and form remains for retry"
+      },
+      {
+        "type": "action",
+        "description": "Attempt order payment processing with backend service failure"
+      },
+      {
+        "type": "assertion",
+        "description": "User sees payment error and can retry or cancel"
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "UI consistency and responsiveness across features",
+    "description": "Verify that all user interfaces including login pages, product detail, chat, cart, dashboards, and review submission are consistent, accessible, and responsive on various screen sizes and devices.",
+    "category": "ui",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open login, marketplace, chat, seller dashboard, and affiliate dashboard pages on desktop viewport"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all UI elements are properly aligned and functional without layout breaks"
+      },
+      {
+        "type": "action",
+        "description": "Repeat above navigation on tablet and mobile viewports"
+      },
+      {
+        "type": "assertion",
+        "description": "All pages adjust content appropriately and remain usable without horizontal scroll or overlaps"
+      },
+      {
+        "type": "action",
+        "description": "Perform accessibility checks such as keyboard navigation and screen reader usage"
+      },
+      {
+        "type": "assertion",
+        "description": "All interactive elements are reachable and labeled for accessibility compliance"
+      }
+    ]
+  }
+]

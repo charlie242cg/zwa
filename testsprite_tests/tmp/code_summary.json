@@ -1,0 +1,64 @@
+{
+  "tech_stack": [
+    "Typescript",
+    "React",
+    "Vite",
+    "Supabase",
+    "Vanilla CSS"
+  ],
+  "features": [
+    {
+      "name": "Authentication",
+      "description": "User login and registration with role-based access control.",
+      "files": [
+        "src/context/AuthContext.tsx",
+        "src/hooks/useAuth.ts",
+        "src/services/authService.ts"
+      ]
+    },
+    {
+      "name": "Product Management",
+      "description": "CRUD operations for products, including image uploads and inventory management.",
+      "files": [
+        "src/services/productService.ts",
+        "src/pages/seller/AddProduct.tsx",
+        "src/pages/seller/EditProduct.tsx"
+      ]
+    },
+    {
+      "name": "Order Flow",
+      "description": "Order creation, status tracking, and OTP-based delivery confirmation.",
+      "files": [
+        "src/services/orderService.ts",
+        "src/pages/orders/OrdersList.tsx",
+        "src/components/orders/OrderCard.tsx"
+      ]
+    },
+    {
+      "name": "Chat & Negotiation",
+      "description": "Real-time messaging between buyers and sellers with custom deal creation.",
+      "files": [
+        "src/services/chatService.ts",
+        "src/pages/chat/ChatRoom.tsx",
+        "src/pages/chat/MessagesList.tsx"
+      ]
+    },
+    {
+      "name": "Affiliate System",
+      "description": "Link generation, conversion tracking, and commission management.",
+      "files": [
+        "src/services/affiliateService.ts",
+        "src/pages/affiliate/AffiliateDashboard.tsx"
+      ]
+    },
+    {
+      "name": "Store Management",
+      "description": "Seller store profile customization and public view.",
+      "files": [
+        "src/services/storeService.ts",
+        "src/pages/seller/EditStore.tsx",
+        "src/pages/store/StorePage.tsx"
+      ]
+    }
+  ]
+}

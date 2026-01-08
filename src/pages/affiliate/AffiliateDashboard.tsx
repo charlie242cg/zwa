@@ -1,0 +1,780 @@
+import { useEffect, useState } from 'react';
+import { TrendingUp, DollarSign, Package, Link as LinkIcon, Search, Clock, Pause, Play, Archive, Clipboard, ShoppingBag } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { productService, Product } from '../../services/productService';
+import { affiliateService, AffiliateLink } from '../../services/affiliateService';
+import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../components/common/Toast';
+import { useSkeletonAnimation, SkeletonAffiliateStats, SkeletonMissionList, SkeletonAffiliateLinkItem } from '../../components/common/SkeletonLoader';
+
+interface ProductSales {
+    product_id: string;
+    product_name: string;
+    product_image: string;
+    product_price: number;
+    sales_count: number;
+    total_earned: number;
+    last_sale: string;
+}
+
+const AffiliateDashboard = () => {
+    const { user, profile } = useAuth();
+    const { showToast, ToastComponent } = useToast();
+    useSkeletonAnimation();
+
+    const [activeTab, setActiveTab] = useState<'wallet' | 'missions' | 'links' | 'sales'>('wallet');
+    const [products, setProducts] = useState<Product[]>([]);
+    const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([]);
+    const [salesByProduct, setSalesByProduct] = useState<ProductSales[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortBy, setSortBy] = useState<'commission' | 'price' | 'price_desc' | 'recent'>('recent');
+    const [stats, setStats] = useState({
+        totalEarned: 0,
+        pendingEarnings: 0,
+        salesCount: 0,
+        pendingSalesCount: 0
+    });
+
+    useEffect(() => {
+        if (user) {
+            fetchAffiliateData();
+        }
+    }, [user]);
+
+    const fetchAffiliateData = async () => {
+        try {
+            setLoading(true);
+
+            // Fetch affiliate-enabled products
+            const { data } = await productService.getProducts();
+            if (data) setProducts(data.filter(p => p.is_affiliate_enabled));
+
+            if (user) {
+                // ✅ CORRECTION: Fetch delivered orders for earned commissions
+                const { data: deliveredOrders } = await supabase
+                    .from('orders')
+                    .select('amount, commission_amount')
+                    .eq('affiliate_id', user.id)
+                    .eq('status', 'delivered'); // Only delivered = earned
+
+                // ✅ CORRECTION: Fetch pending orders (paid/shipped but not delivered yet)
+                const { data: pendingOrders } = await supabase
+                    .from('orders')
+                    .select('amount, commission_amount')
+                    .eq('affiliate_id', user.id)
+                    .in('status', ['paid', 'shipped']); // Pending delivery
+
+                if (deliveredOrders) {
+                    const earned = deliveredOrders.reduce((sum, o) => sum + Number(o.commission_amount || 0), 0);
+                    setStats(prev => ({
+                        ...prev,
+                        totalEarned: earned,
+                        salesCount: deliveredOrders.length
+                    }));
+                }
+
+                if (pendingOrders) {
+                    const pending = pendingOrders.reduce((sum, o) => sum + Number(o.commission_amount || 0), 0);
+                    setStats(prev => ({
+                        ...prev,
+                        pendingEarnings: pending,
+                        pendingSalesCount: pendingOrders.length
+                    }));
+                }
+
+                await fetchAffiliateLinks();
+                await fetchAffiliateSales();
+            }
+        } catch (error) {
+            console.error("Error fetching affiliate data:", error);
+            showToast("Erreur lors du chargement des données", 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchAffiliateLinks = async () => {
+        if (!user) return;
+        // Fetch active and paused links (exclude archived)
+        const { data } = await affiliateService.getAffiliateLinks(user.id);
+        if (data) {
+            // Filter to show only active and paused
+            const visibleLinks = data.filter(link => link.status === 'active' || link.status === 'paused');
+            setAffiliateLinks(visibleLinks);
+        }
+    };
+
+    const fetchAffiliateSales = async () => {
+        if (!user) return;
+
+        // Fetch all delivered orders grouped by product
+        const { data: orders } = await supabase
+            .from('orders')
+            .select('product_id, commission_amount, created_at, products(name, image_url, price)')
+            .eq('affiliate_id', user.id)
+            .eq('status', 'delivered')
+            .order('created_at', { ascending: false });
+
+        if (orders) {
+            // Group by product
+            const grouped: { [key: string]: ProductSales } = {};
+
+            orders.forEach((order: any) => {
+                const productId = order.product_id;
+                const product = order.products;
+                if (!grouped[productId]) {
+                    grouped[productId] = {
+                        product_id: productId,
+                        product_name: product?.name || 'Produit',
+                        product_image: product?.image_url || '',
+                        product_price: product?.price || 0,
+                        sales_count: 0,
+                        total_earned: 0,
+                        last_sale: order.created_at
+                    };
+                }
+                grouped[productId].sales_count++;
+                grouped[productId].total_earned += Number(order.commission_amount || 0);
+            });
+
+            // Convert to array and sort by total earned
+            const salesArray = Object.values(grouped).sort((a, b) => b.total_earned - a.total_earned);
+            setSalesByProduct(salesArray);
+        }
+    };
+
+    const copyLink = async (productId: string) => {
+        if (!user) return;
+        const url = `${window.location.origin}/product/${productId}?ref=${user.id}`;
+
+        try {
+            await navigator.clipboard.writeText(url);
+
+            // ✅ CORRECTION: Validate product is still affiliate-enabled
+            const { error } = await affiliateService.registerPromotion(user.id, productId);
+
+            if (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+
+            await fetchAffiliateLinks();
+            showToast("Lien copié et enregistré dans vos liens actifs !", 'success');
+        } catch (err) {
+            console.error("Failed to copy/register:", err);
+            showToast("Erreur lors de la copie du lien", 'error');
+        }
+    };
+
+    const handlePauseLink = async (linkId: string) => {
+        const { error } = await affiliateService.pausePromotion(linkId);
+        if (!error) {
+            showToast("Lien mis en pause", 'info');
+            await fetchAffiliateLinks();
+        } else {
+            showToast("Erreur lors de la pause", 'error');
+        }
+    };
+
+    const handleResumeLink = async (linkId: string) => {
+        const { error } = await affiliateService.resumePromotion(linkId);
+        if (!error) {
+            showToast("Lien réactivé", 'success');
+            await fetchAffiliateLinks();
+        } else {
+            showToast("Erreur lors de la réactivation", 'error');
+        }
+    };
+
+    const handleArchiveLink = async (linkId: string) => {
+        if (!window.confirm("Voulez-vous vraiment archiver ce lien ? Les commissions déjà gagnées resteront dans votre solde.")) return;
+
+        const { error } = await affiliateService.archivePromotion(linkId);
+        if (!error) {
+            showToast("Lien archivé", 'info');
+            await fetchAffiliateLinks();
+        } else {
+            showToast("Erreur lors de l'archivage", 'error');
+        }
+    };
+
+    const normalizeText = (text: string) => {
+        return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    };
+
+    const filteredProducts = products
+        .filter(p => {
+            const search = normalizeText(searchTerm);
+            const name = p.name ? normalizeText(p.name) : '';
+            const desc = p.description ? normalizeText(p.description) : '';
+            return name.includes(search) || desc.includes(search);
+        })
+        .sort((a, b) => {
+            const valA = Number(a.default_commission || 0);
+            const valB = Number(b.default_commission || 0);
+            const priceA = Number(a.price || 0);
+            const priceB = Number(b.price || 0);
+
+            if (sortBy === 'commission') return valB - valA;
+            if (sortBy === 'price') return priceA - priceB;
+            if (sortBy === 'price_desc') return priceB - priceA;
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+
+    const filteredLinks = affiliateLinks.filter(link => {
+        const search = normalizeText(searchTerm);
+        const name = link.products?.name ? normalizeText(link.products.name) : '';
+        return name.includes(search);
+    });
+
+    useEffect(() => {
+        setSearchTerm('');
+    }, [activeTab]);
+
+    return (
+        <div style={styles.container}>
+            {ToastComponent}
+
+            <header style={styles.header}>
+                <h1 style={styles.title}>Affiliation 🚀</h1>
+                <p style={styles.subtitle}>Partagez des produits et gagnez des commissions.</p>
+            </header>
+
+            {/* Tabs */}
+            <div style={styles.tabs}>
+                <button
+                    onClick={() => setActiveTab('wallet')}
+                    style={{ ...styles.tab, borderBottom: activeTab === 'wallet' ? '2px solid var(--primary)' : 'none', color: activeTab === 'wallet' ? 'var(--primary)' : 'var(--text-secondary)' }}
+                >
+                    Portefeuille
+                </button>
+                <button
+                    onClick={() => setActiveTab('missions')}
+                    style={{ ...styles.tab, borderBottom: activeTab === 'missions' ? '2px solid var(--primary)' : 'none', color: activeTab === 'missions' ? 'var(--primary)' : 'var(--text-secondary)' }}
+                >
+                    Missions
+                </button>
+                <button
+                    onClick={() => setActiveTab('links')}
+                    style={{ ...styles.tab, borderBottom: activeTab === 'links' ? '2px solid var(--primary)' : 'none', color: activeTab === 'links' ? 'var(--primary)' : 'var(--text-secondary)' }}
+                >
+                    Mes Liens
+                </button>
+                <button
+                    onClick={() => setActiveTab('sales')}
+                    style={{ ...styles.tab, borderBottom: activeTab === 'sales' ? '2px solid var(--primary)' : 'none', color: activeTab === 'sales' ? 'var(--primary)' : 'var(--text-secondary)' }}
+                >
+                    Mes Ventes
+                </button>
+            </div>
+
+            {activeTab === 'wallet' ? (
+                <div style={styles.tabContent}>
+                    {/* Stats Cards */}
+                    {loading ? (
+                        <SkeletonAffiliateStats />
+                    ) : (
+                        <div style={styles.statsGrid}>
+                            <div style={styles.statCard} className="premium-card">
+                                <DollarSign size={20} color="var(--primary)" />
+                                <div style={styles.statValue}>{profile?.wallet_balance?.toLocaleString() || 0}</div>
+                                <div style={styles.statLabel}>Solde (FCFA)</div>
+                            </div>
+                            <div style={styles.statCard} className="premium-card">
+                                <TrendingUp size={20} color="#00CC66" />
+                                <div style={styles.statValue}>{stats.totalEarned.toLocaleString()}</div>
+                                <div style={styles.statLabel}>Total Gagné</div>
+                            </div>
+                            <div style={styles.statCard} className="premium-card">
+                                <Clock size={20} color="#FFCC00" />
+                                <div style={styles.statValue}>{stats.pendingEarnings.toLocaleString()}</div>
+                                <div style={styles.statLabel}>En Attente</div>
+                            </div>
+                            <div style={styles.statCard} className="premium-card">
+                                <Package size={20} color="#00AAFF" />
+                                <div style={styles.statValue}>{stats.salesCount}</div>
+                                <div style={styles.statLabel}>Ventes Livrées</div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div style={styles.infoBox}>
+                        <TrendingUp size={18} />
+                        <div>
+                            <p style={{ margin: 0, marginBottom: '4px' }}>
+                                Les commissions sont versées automatiquement dès que l'acheteur confirme la livraison.
+                            </p>
+                            <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+                                Ventes en attente : {stats.pendingSalesCount} commande(s) payée(s) non encore livrée(s)
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            ) : activeTab === 'missions' ? (
+                <div style={styles.tabContent}>
+                    {/* Search and Sort */}
+                    <div style={styles.filtersRow}>
+                        <div style={styles.searchBar}>
+                            <Search size={16} />
+                            <input
+                                type="text"
+                                placeholder="Rechercher une mission..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={styles.searchInput}
+                            />
+                        </div>
+                        <select
+                            style={styles.sortSelect}
+                            value={sortBy}
+                            onChange={(e: any) => setSortBy(e.target.value)}
+                        >
+                            <option value="recent">Nouveautés</option>
+                            <option value="commission">Commission %</option>
+                            <option value="price">Prix croissant</option>
+                            <option value="price_desc">Prix décroissant</option>
+                        </select>
+                    </div>
+
+                    {loading ? (
+                        <SkeletonMissionList count={6} />
+                    ) : filteredProducts.length > 0 ? (
+                        <div style={styles.missionList}>
+                            {filteredProducts.map(product => (
+                                <div key={product.id} style={styles.missionItem} className="premium-card">
+                                    <img src={product.image_url} alt={product.name} style={styles.productThumb} />
+                                    <div style={styles.productInfo}>
+                                        <div style={styles.productName}>{product.name}</div>
+                                        <div style={styles.productPrice}>{product.price.toLocaleString()} FCFA</div>
+                                        <div style={styles.commissionBadge}>
+                                            Commission: <strong>{product.default_commission}%</strong>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => copyLink(product.id)}
+                                        style={styles.copyBtn}
+                                        title="Copier le lien affilié"
+                                    >
+                                        <LinkIcon size={18} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={styles.centered}>Aucune mission trouvée pour cette recherche.</div>
+                    )}
+                </div>
+            ) : activeTab === 'links' ? (
+                /* Mes Liens Tab Content (links) */
+                <div style={styles.tabContent}>
+                    <h2 style={styles.sectionTitle}>Mes Liens Actifs 🔗</h2>
+                    <p style={styles.subtitle}>Gérez les produits que vous promouvez actuellement.</p>
+
+                    {/* Search Bar for Links */}
+                    <div style={styles.filtersRow}>
+                        <div style={styles.searchBar}>
+                            <Search size={16} />
+                            <input
+                                type="text"
+                                placeholder="Rechercher dans mes liens..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={styles.searchInput}
+                            />
+                        </div>
+                    </div>
+
+                    {loading ? (
+                        <>
+                            {[1, 2, 3, 4, 5].map(i => <SkeletonAffiliateLinkItem key={i} />)}
+                        </>
+                    ) : filteredLinks.length > 0 ? (
+                        <div style={styles.missionList}>
+                            {filteredLinks.map(link => (
+                                <div key={link.id} style={styles.missionItem} className="premium-card">
+                                    <img src={link.products?.image_url} alt={link.products?.name} style={styles.productThumb} />
+                                    <div style={styles.productInfo}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={styles.productName}>{link.products?.name}</div>
+                                            {link.status === 'paused' && (
+                                                <span style={{
+                                                    fontSize: '10px',
+                                                    padding: '2px 6px',
+                                                    background: 'rgba(255, 204, 0, 0.1)',
+                                                    color: '#FFCC00',
+                                                    borderRadius: '6px',
+                                                    fontWeight: '600'
+                                                }}>
+                                                    EN PAUSE
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={styles.productPrice}>{link.products?.price.toLocaleString()} FCFA</div>
+                                        <div style={styles.commissionBadge}>
+                                            Commission: <strong>{link.products?.default_commission}%</strong>
+                                        </div>
+                                        {!link.products?.is_affiliate_enabled && (
+                                            <div style={{ fontSize: '11px', color: '#FF4444', marginTop: '4px' }}>
+                                                ⚠️ Affiliation désactivée par le vendeur
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div style={styles.linkActions}>
+                                        <button
+                                            onClick={() => copyLink(link.product_id)}
+                                            style={{
+                                                ...styles.copyBtn,
+                                                opacity: link.status === 'paused' ? 0.5 : 1,
+                                                cursor: link.status === 'paused' ? 'not-allowed' : 'pointer'
+                                            }}
+                                            title={link.status === 'paused' ? "Réactivez le lien pour le copier" : "Copier le lien"}
+                                            disabled={link.status === 'paused'}
+                                        >
+                                            <Clipboard size={18} />
+                                        </button>
+                                        {link.status === 'active' ? (
+                                            <button
+                                                onClick={() => handlePauseLink(link.id)}
+                                                style={{ ...styles.copyBtn, background: 'rgba(255, 204, 0, 0.1)', color: '#FFCC00' }}
+                                                title="Mettre en pause"
+                                            >
+                                                <Pause size={18} />
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => handleResumeLink(link.id)}
+                                                style={{ ...styles.copyBtn, background: 'rgba(0, 204, 102, 0.1)', color: '#00CC66' }}
+                                                title="Reprendre"
+                                            >
+                                                <Play size={18} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => handleArchiveLink(link.id)}
+                                            style={{ ...styles.copyBtn, background: 'rgba(255, 68, 68, 0.1)', color: '#FF4444' }}
+                                            title="Archiver"
+                                        >
+                                            <Archive size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{ ...styles.centered, padding: '60px 20px' }}>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>Vous n'avez pas encore de liens actifs.</p>
+                            <button
+                                onClick={() => setActiveTab('missions')}
+                                style={styles.actionButton}
+                            >
+                                Explorer les missions
+                            </button>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                /* Mes Ventes Tab Content (sales) */
+                <div style={styles.tabContent}>
+                    <h2 style={styles.sectionTitle}>Mes Ventes 📊</h2>
+                    <p style={styles.subtitle}>Vos produits qui génèrent des commissions.</p>
+
+                    {loading ? (
+                        <>
+                            {[1, 2, 3, 4].map(i => <SkeletonAffiliateLinkItem key={i} />)}
+                        </>
+                    ) : salesByProduct.length > 0 ? (
+                        <>
+                            {/* Summary Stats */}
+                            <div style={styles.salesSummary}>
+                                <div style={styles.salesSummaryItem}>
+                                    <ShoppingBag size={16} color="var(--primary)" />
+                                    <span style={styles.salesSummaryValue}>{salesByProduct.length}</span>
+                                    <span style={styles.salesSummaryLabel}>produits</span>
+                                </div>
+                                <div style={styles.salesSummaryItem}>
+                                    <Package size={16} color="#00CC66" />
+                                    <span style={styles.salesSummaryValue}>
+                                        {salesByProduct.reduce((sum, p) => sum + p.sales_count, 0)}
+                                    </span>
+                                    <span style={styles.salesSummaryLabel}>ventes</span>
+                                </div>
+                                <div style={styles.salesSummaryItem}>
+                                    <DollarSign size={16} color="#FFCC00" />
+                                    <span style={styles.salesSummaryValue}>
+                                        {salesByProduct.reduce((sum, p) => sum + p.total_earned, 0).toLocaleString()}
+                                    </span>
+                                    <span style={styles.salesSummaryLabel}>FCFA gagnés</span>
+                                </div>
+                            </div>
+
+                            {/* Sales List */}
+                            <div style={styles.missionList}>
+                                {salesByProduct.map(sale => (
+                                    <div key={sale.product_id} style={styles.salesItem} className="premium-card">
+                                        <img src={sale.product_image} alt={sale.product_name} style={styles.productThumb} />
+                                        <div style={styles.productInfo}>
+                                            <div style={styles.productName}>{sale.product_name}</div>
+                                            <div style={styles.salesInfo}>
+                                                <span style={{ color: '#00CC66', fontWeight: '600' }}>
+                                                    {sale.sales_count} vente{sale.sales_count > 1 ? 's' : ''}
+                                                </span>
+                                                <span style={{ color: 'var(--text-secondary)' }}> • </span>
+                                                <span style={{ color: 'var(--primary)', fontWeight: '700' }}>
+                                                    {sale.total_earned.toLocaleString()} FCFA
+                                                </span>
+                                            </div>
+                                            <div style={styles.lastSale}>
+                                                Dernière vente: {new Date(sale.last_sale).toLocaleDateString('fr-FR')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <div style={{ ...styles.centered, padding: '60px 20px' }}>
+                            <Package size={48} color="rgba(255,255,255,0.2)" style={{ marginBottom: '16px' }} />
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '16px', fontWeight: '600' }}>
+                                Aucune vente pour l'instant
+                            </p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '13px' }}>
+                                Partagez vos liens affiliés pour commencer à gagner !
+                            </p>
+                            <button
+                                onClick={() => setActiveTab('missions')}
+                                style={styles.actionButton}
+                            >
+                                Découvrir les missions
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const styles = {
+    container: {
+        padding: '24px 20px',
+        maxWidth: '800px',
+        margin: '0 auto',
+        minHeight: '100vh',
+    },
+    header: {
+        marginBottom: '32px',
+    },
+    title: {
+        fontSize: '28px',
+        fontWeight: '900',
+        color: 'white',
+        marginBottom: '8px',
+    },
+    subtitle: {
+        fontSize: '14px',
+        color: 'var(--text-secondary)',
+    },
+    sectionTitle: {
+        fontSize: '20px',
+        fontWeight: '800',
+        color: 'white',
+        marginTop: '8px',
+        marginBottom: '4px',
+    },
+    linkActions: {
+        display: 'flex',
+        gap: '8px',
+    },
+    actionButton: {
+        background: 'var(--primary)',
+        color: 'white',
+        border: 'none',
+        borderRadius: '12px',
+        padding: '12px 24px',
+        fontSize: '14px',
+        fontWeight: '700',
+        cursor: 'pointer',
+    },
+    tabs: {
+        display: 'flex',
+        gap: '24px',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        marginBottom: '24px',
+    },
+    tab: {
+        background: 'none',
+        border: 'none',
+        padding: '12px 0',
+        fontSize: '15px',
+        fontWeight: '700',
+        cursor: 'pointer',
+        transition: 'all 0.3s ease',
+    },
+    tabContent: {
+        animation: 'fadeIn 0.3s ease',
+    },
+    statsGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '12px',
+        marginBottom: '24px',
+    },
+    statCard: {
+        padding: '16px',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '8px',
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: '20px',
+    },
+    statValue: {
+        fontSize: '18px',
+        fontWeight: '800',
+        color: 'white',
+    },
+    statLabel: {
+        fontSize: '10px',
+        color: 'var(--text-secondary)',
+        textTransform: 'uppercase' as const,
+    },
+    infoBox: {
+        display: 'flex',
+        gap: '12px',
+        padding: '16px',
+        background: 'rgba(138, 43, 226, 0.05)',
+        borderRadius: '16px',
+        fontSize: '13px',
+        color: 'var(--text-secondary)',
+        lineHeight: '1.4',
+    },
+    filtersRow: {
+        display: 'flex',
+        gap: '12px',
+        marginBottom: '20px',
+    },
+    searchBar: {
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        background: 'rgba(255,255,255,0.05)',
+        padding: '0 16px',
+        borderRadius: '12px',
+        border: '1px solid rgba(255,255,255,0.1)',
+    },
+    searchInput: {
+        background: 'none',
+        border: 'none',
+        color: 'white',
+        padding: '12px 0',
+        fontSize: '14px',
+        outline: 'none',
+        width: '100%',
+    },
+    sortSelect: {
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        color: 'white',
+        borderRadius: '12px',
+        padding: '0 12px',
+        fontSize: '14px',
+    },
+    missionList: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '12px',
+    },
+    missionItem: {
+        padding: '12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        background: 'rgba(255,255,255,0.02)',
+        borderRadius: '16px',
+    },
+    productThumb: {
+        width: '60px',
+        height: '60px',
+        borderRadius: '12px',
+        objectFit: 'cover' as const,
+    },
+    productInfo: {
+        flex: 1,
+    },
+    productName: {
+        fontSize: '15px',
+        fontWeight: '600',
+        color: 'white',
+        marginBottom: '4px',
+    },
+    productPrice: {
+        fontSize: '13px',
+        color: 'var(--text-secondary)',
+    },
+    commissionBadge: {
+        marginTop: '4px',
+        fontSize: '12px',
+        color: 'var(--primary)',
+    },
+    copyBtn: {
+        background: 'var(--primary)',
+        border: 'none',
+        width: '36px',
+        height: '36px',
+        borderRadius: '10px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        cursor: 'pointer',
+    },
+    centered: {
+        textAlign: 'center' as const,
+        padding: '40px',
+        color: 'var(--text-secondary)',
+    },
+    salesSummary: {
+        display: 'flex',
+        gap: '12px',
+        marginBottom: '24px',
+        padding: '16px',
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: '16px',
+    },
+    salesSummaryItem: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column' as const,
+        alignItems: 'center',
+        gap: '6px',
+    },
+    salesSummaryValue: {
+        fontSize: '20px',
+        fontWeight: '800',
+        color: 'white',
+    },
+    salesSummaryLabel: {
+        fontSize: '11px',
+        color: 'var(--text-secondary)',
+        textTransform: 'uppercase' as const,
+    },
+    salesItem: {
+        padding: '16px',
+        display: 'flex',
+        gap: '12px',
+        background: 'rgba(255,255,255,0.02)',
+        borderRadius: '16px',
+    },
+    salesInfo: {
+        fontSize: '14px',
+        marginTop: '6px',
+        marginBottom: '4px',
+    },
+    lastSale: {
+        fontSize: '12px',
+        color: 'var(--text-secondary)',
+    }
+};
+
+export default AffiliateDashboard;
