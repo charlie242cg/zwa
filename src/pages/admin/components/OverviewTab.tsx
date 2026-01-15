@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { TrendingUp, Wallet, Users, ShoppingBag, AlertCircle, Package, DollarSign, CheckCircle, Clock } from 'lucide-react';
-import { supabase } from '../../../lib/supabase';
+import { TrendingUp, Wallet, Users, ShoppingBag, AlertCircle, Package, DollarSign, CheckCircle, Clock, Loader2 } from 'lucide-react';
 import { useSkeletonAnimation, SkeletonBar } from '../../../components/common/SkeletonLoader';
+import { useAdminStats } from '../../../hooks/useAdminStats';
 
 const StatCard = ({ icon, label, value, trend, subtitle, alert }: {
     icon: any,
@@ -44,89 +43,31 @@ const SkeletonStatCard = () => (
 
 const OverviewTab = () => {
     useSkeletonAnimation();
-    const [stats, setStats] = useState({
-        totalGMV: 0,
-        totalCommissions: 0,
-        totalOrders: 0,
-        totalSellers: 0,
-        totalAffiliates: 0,
-        totalBuyers: 0,
-        totalProducts: 0,
-        pendingWithdrawals: 0,
-        pendingWithdrawalAmount: 0,
-        verifiedSellers: 0,
-        activeOrders: 0,
-        completedToday: 0,
-    });
-    const [loading, setLoading] = useState(true);
+    const { data: stats, isLoading: loading } = useAdminStats();
 
-    useEffect(() => {
-        fetchStats();
-    }, []);
-
-    const fetchStats = async () => {
-        setLoading(true);
-        try {
-            // GMV & Commissions from delivered orders
-            const { data: orderStats } = await supabase
-                .from('orders')
-                .select('amount, commission_amount, status, created_at')
-                .eq('status', 'delivered');
-
-            // Active orders
-            const { count: activeOrderCount } = await supabase
-                .from('orders')
-                .select('*', { count: 'exact', head: true })
-                .in('status', ['pending', 'processing', 'shipped']);
-
-            // Today's completed orders
-            const today = new Date().toISOString().split('T')[0];
-            const { count: todayCount } = await supabase
-                .from('orders')
-                .select('*', { count: 'exact', head: true })
-                .eq('status', 'delivered')
-                .gte('created_at', today);
-
-            // User counts
-            const { count: sellerCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'seller');
-            const { count: verifiedSellerCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'seller').eq('kyc_verified', true);
-            const { count: affiliateCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'affiliate');
-            const { count: buyerCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'buyer');
-
-            // Product count
-            const { count: productCount } = await supabase.from('products').select('*', { count: 'exact', head: true });
-
-            // Pending withdrawals
-            const { data: pendingWithdrawals, count: pendingCount } = await supabase
-                .from('transactions')
-                .select('amount', { count: 'exact' })
-                .eq('type', 'withdrawal')
-                .eq('status', 'pending');
-
-            const gmv = orderStats?.reduce((sum, o) => sum + Number(o.amount), 0) || 0;
-            const commissions = orderStats?.reduce((sum, o) => sum + Number(o.commission_amount || 0), 0) || 0;
-            const pendingAmount = pendingWithdrawals?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-
-            setStats({
-                totalGMV: gmv,
-                totalCommissions: commissions,
-                totalOrders: orderStats?.length || 0,
-                totalSellers: sellerCount || 0,
-                totalAffiliates: affiliateCount || 0,
-                totalBuyers: buyerCount || 0,
-                totalProducts: productCount || 0,
-                pendingWithdrawals: pendingCount || 0,
-                pendingWithdrawalAmount: pendingAmount,
-                verifiedSellers: verifiedSellerCount || 0,
-                activeOrders: activeOrderCount || 0,
-                completedToday: todayCount || 0,
-            });
-        } catch (error) {
-            console.error('Error fetching admin stats:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    if (loading || !stats) {
+        return (
+            <div style={styles.container}>
+                <div style={styles.grid}>
+                    {[1, 2, 3, 4].map((i) => <SkeletonStatCard key={i} />)}
+                </div>
+                <div style={styles.userSection}>
+                    <SkeletonBar width={200} height={22} margin="0 0 20px 0" />
+                    <div style={styles.userGrid}>
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} style={styles.userCard} className="premium-card">
+                                <SkeletonBar width={40} height={40} borderRadius={12} />
+                                <div style={{ flex: 1 }}>
+                                    <SkeletonBar width="60%" height={12} margin="0 0 4px 0" />
+                                    <SkeletonBar width="40%" height={18} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (loading) {
         return (

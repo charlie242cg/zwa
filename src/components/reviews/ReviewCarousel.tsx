@@ -1,5 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useRef } from 'react';
 import ReviewCard from './ReviewCard';
 import { Review } from '../../services/reviewService';
 
@@ -61,26 +60,6 @@ const ReviewCarousel = ({ reviews, type = 'product', onViewAll, totalCount }: Re
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
             >
-                {/* Navigation Arrows - Desktop */}
-                {reviews.length > 1 && (
-                    <>
-                        <button
-                            onClick={handlePrev}
-                            style={{ ...styles.navButton, ...styles.navButtonLeft }}
-                            aria-label="Avis précédent"
-                        >
-                            <ChevronLeft size={20} />
-                        </button>
-                        <button
-                            onClick={handleNext}
-                            style={{ ...styles.navButton, ...styles.navButtonRight }}
-                            aria-label="Avis suivant"
-                        >
-                            <ChevronRight size={20} />
-                        </button>
-                    </>
-                )}
-
                 {/* Review Card */}
                 <div style={styles.cardWrapper}>
                     <ReviewCard review={reviews[currentIndex]} type={type} />
@@ -130,31 +109,6 @@ const styles = {
     cardWrapper: {
         width: '100%',
         transition: 'transform 0.3s ease-out',
-    },
-    navButton: {
-        position: 'absolute' as const,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        zIndex: 10,
-        background: 'rgba(0,0,0,0.6)',
-        border: 'none',
-        width: '36px',
-        height: '36px',
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        color: 'white',
-        backdropFilter: 'blur(10px)',
-        transition: 'all 0.2s ease',
-        opacity: 0.7,
-    },
-    navButtonLeft: {
-        left: '12px',
-    },
-    navButtonRight: {
-        right: '12px',
     },
     dotsContainer: {
         display: 'flex',

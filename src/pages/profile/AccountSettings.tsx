@@ -1,16 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Mail, Phone, Camera, Lock } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, Camera, Lock, Loader2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useProfile } from '../../hooks/useProfile';
 import { supabase } from '../../lib/supabase';
 import { uploadToCloudinary } from '../../lib/cloudinary';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 const AccountSettings = () => {
     const navigate = useNavigate();
-    const { user, profile } = useAuth();
+    const queryClient = useQueryClient();
+    const { user } = useAuth();
+    const { data: profile, isLoading: profileLoading } = useProfile(user?.id);
+
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [phoneError, setPhoneError] = useState('');
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
     const [formData, setFormData] = useState({
         email: user?.email || '',
@@ -82,6 +89,31 @@ const AccountSettings = () => {
         }
     };
 
+    const updateProfileMutation = useMutation({
+        mutationFn: async (updatedData: any) => {
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: updatedData.full_name || null,
+                    phone_number: updatedData.phone_number || null,
+                    avatar_url: updatedData.avatar_url || null
+                })
+                .eq('id', user?.id);
+
+            if (error) throw error;
+            return updatedData;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+            alert("✅ Informations sauvegardées avec succès !");
+            navigate('/profile');
+        },
+        onError: (error: any) => {
+            console.error('[AccountSettings] ❌ Error saving:', error);
+            alert("Erreur lors de la sauvegarde : " + error.message);
+        }
+    });
+
     const handleSave = async () => {
         if (!user || !profile) return;
 
@@ -100,29 +132,17 @@ const AccountSettings = () => {
             }
         }
 
-        setLoading(true);
         console.log('[AccountSettings] 💾 Saving profile:', formData);
-
-        const { error } = await supabase
-            .from('profiles')
-            .update({
-                full_name: formData.full_name || null,
-                phone_number: formData.phone_number || null,
-                avatar_url: formData.avatar_url || null
-            })
-            .eq('id', user.id);
-
-        if (error) {
-            console.error('[AccountSettings] ❌ Error saving:', error);
-            alert("Erreur lors de la sauvegarde : " + error.message);
-        } else {
-            console.log('[AccountSettings] ✅ Profile saved successfully');
-            alert("✅ Informations sauvegardées avec succès !");
-            navigate('/profile');
-        }
-
-        setLoading(false);
+        updateProfileMutation.mutate(formData);
     };
+
+    if (profileLoading) {
+        return (
+            <div style={{ ...styles.container, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Loader2 className="spinner" size={40} />
+            </div>
+        );
+    }
 
     return (
         <div style={styles.container}>
@@ -159,7 +179,7 @@ const AccountSettings = () => {
                         Mot de passe
                     </label>
                     <button
-                        onClick={() => alert('Fonctionnalité de changement de mot de passe en développement')}
+                        onClick={() => setIsPasswordModalOpen(true)}
                         style={styles.changePasswordBtn}
                     >
                         Modifier le mot de passe
@@ -239,15 +259,21 @@ const AccountSettings = () => {
                 {/* Bouton Sauvegarder */}
                 <button
                     onClick={handleSave}
-                    disabled={loading || uploading}
+                    disabled={updateProfileMutation.isPending || uploading}
                     style={{
                         ...styles.saveButton,
-                        opacity: loading || uploading ? 0.5 : 1
+                        opacity: updateProfileMutation.isPending || uploading ? 0.5 : 1
                     }}
                 >
-                    {loading ? 'Sauvegarde...' : '💾 Sauvegarder'}
+                    {updateProfileMutation.isPending ? 'Sauvegarde...' : '💾 Sauvegarder'}
                 </button>
             </div>
+
+            <ChangePasswordModal
+                isOpen={isPasswordModalOpen}
+                onClose={() => setIsPasswordModalOpen(false)}
+                email={user?.email || ''}
+            />
         </div>
     );
 };

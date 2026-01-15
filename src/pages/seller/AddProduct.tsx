@@ -17,6 +17,7 @@ const AddProduct = () => {
         price: '',
         original_price: '', // For promotion detection
         min_order_quantity: '1',
+        stock_quantity: '', // Stock disponible (vide = illimité)
         is_affiliate_enabled: true,
         default_commission: '10',
         category_id: '',
@@ -90,6 +91,7 @@ const AddProduct = () => {
                     price: parseInt(formData.price),
                     original_price: formData.original_price ? parseInt(formData.original_price) : null,
                     min_order_quantity: parseInt(formData.min_order_quantity),
+                    stock_quantity: formData.stock_quantity ? parseInt(formData.stock_quantity) : null,
                     is_affiliate_enabled: formData.is_affiliate_enabled,
                     default_commission: formData.is_affiliate_enabled ? parseFloat(formData.default_commission) : 0,
                     image_url: imageUrls[0], // First image is the main one
@@ -207,13 +209,23 @@ const AddProduct = () => {
                         />
                     </div>
                     <div style={{ ...styles.inputGroup, flex: 1 }}>
-                        {formData.original_price && parseFloat(formData.original_price) > parseFloat(formData.price || '0') && (
-                            <div style={styles.promoPreview}>
-                                🔥 {Math.round(((parseFloat(formData.original_price) - parseFloat(formData.price || '0')) / parseFloat(formData.original_price)) * 100)}% de rabais
-                            </div>
-                        )}
+                        <label style={styles.label}>Stock disponible</label>
+                        <input
+                            type="number"
+                            placeholder="Illimité"
+                            style={styles.input}
+                            value={formData.stock_quantity}
+                            onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
+                            min="0"
+                        />
                     </div>
                 </div>
+
+                {formData.original_price && parseFloat(formData.original_price) > parseFloat(formData.price || '0') && (
+                    <div style={styles.promoPreview}>
+                        🔥 {Math.round(((parseFloat(formData.original_price) - parseFloat(formData.price || '0')) / parseFloat(formData.original_price)) * 100)}% de rabais affiché
+                    </div>
+                )}
 
                 {/* Affiliation Section */}
                 <div style={styles.affiliateCard} className="premium-card">

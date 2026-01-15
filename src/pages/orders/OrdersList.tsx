@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Search, Loader2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { orderService, OrderStatus } from '../../services/orderService';
 import { reviewService } from '../../services/reviewService';
@@ -9,111 +9,48 @@ import OrderCard from '../../components/orders/OrderCard';
 import OrderDetailsModal from '../../components/orders/OrderDetailsModal';
 import OrderStatsBar from '../../components/orders/OrderStatsBar';
 import { useSkeletonAnimation, SkeletonOrderCard } from '../../components/common/SkeletonLoader';
+import { useOrders } from '../../hooks/useOrders';
+import { useOrderCounts } from '../../hooks/useOrderCounts';
+import { useDebounce } from '../../hooks/useDebounce';
+import { useQueryClient } from '@tanstack/react-query';
 
 const OrdersList = () => {
-    useSkeletonAnimation(); // Ajoute l'animation CSS
-    const { profile, user } = useAuth();
-    const [orders, setOrders] = useState<any[]>([]);
-    const [filteredOrders, setFilteredOrders] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    useSkeletonAnimation();
+    const { profile } = useAuth();
+    const queryClient = useQueryClient();
+
     const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>('all');
     const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearch = useDebounce(searchQuery, 400);
+
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [reviewModalOpen, setReviewModalOpen] = useState(false);
     const [selectedOrderForReview, setSelectedOrderForReview] = useState<any | null>(null);
-    const [ordersWithReviews, setOrdersWithReviews] = useState<Set<string>>(new Set());
 
-    const userRole = profile?.role === 'seller' ? 'seller' : 'buyer';
+    const userRole = profile?.role === 'seller' ? 'seller' :
+        profile?.role === 'affiliate' ? 'affiliate' : 'buyer';
 
-    useEffect(() => {
-        if (profile?.id && profile?.role) {
-            fetchOrders();
-        }
-    }, [profile?.id, profile?.role]);
+    // TanStack Query Hooks
+    const {
+        data: ordersData,
+        isLoading: loading,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+        refetch: refetchOrders
+    } = useOrders({
+        userId: profile?.id,
+        role: userRole,
+        status: activeTab,
+        search: debouncedSearch
+    });
 
-    useEffect(() => {
-        filterOrders();
-    }, [orders, activeTab, searchQuery]);
+    const { data: counts, refetch: refetchCounts } = useOrderCounts(profile?.id, profile?.role);
 
-    const fetchOrders = async () => {
-        if (!profile?.id || !profile?.role) {
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-        let result;
-        if (profile.role === 'seller') {
-            result = await orderService.getOrdersBySeller(profile.id);
-        } else if (profile.role === 'affiliate') {
-            result = await orderService.getOrdersByAffiliate(profile.id);
-        } else {
-            result = await orderService.getOrdersByBuyer(profile.id);
-        }
-
-        if (!result.error && result.data) {
-            setOrders(result.data);
-
-            // Check which orders already have reviews
-            const reviewChecks = await Promise.all(
-                result.data.map(order => reviewService.hasReview(order.id))
-            );
-            const reviewedOrders = new Set(
-                result.data
-                    .filter((_, index) => reviewChecks[index].hasReview)
-                    .map(order => order.id)
-            );
-            setOrdersWithReviews(reviewedOrders);
-        }
-        setLoading(false);
-    };
-
-    const filterOrders = () => {
-        let filtered = orders;
-
-        // Filter by status
-        if (activeTab !== 'all') {
-            filtered = filtered.filter(order => order.status === activeTab);
-        }
-
-        // Filter by search query
-        if (searchQuery) {
-            filtered = filtered.filter(order =>
-                order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                order.products?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                order.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                order.profiles?.store_name?.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-        }
-
-        setFilteredOrders(filtered);
-    };
-
-    const getTabCounts = () => {
-        return {
-            all: orders.length,
-            pending: orders.filter(o => o.status === 'pending').length,
-            paid: orders.filter(o => o.status === 'paid').length,
-            shipped: orders.filter(o => o.status === 'shipped').length,
-            delivered: orders.filter(o => o.status === 'delivered').length,
-            cancelled: orders.filter(o => o.status === 'cancelled').length,
-        };
-    };
-
-    const getSellerStats = () => {
-        const deliveredOrders = orders.filter(o => o.status === 'delivered');
-        const totalRevenue = deliveredOrders.reduce((sum, o) => sum + Number(o.amount), 0);
-
-        return {
-            pending: orders.filter(o => o.status === 'pending').length,
-            paid: orders.filter(o => o.status === 'paid').length,
-            shipped: orders.filter(o => o.status === 'shipped').length,
-            delivered: orders.filter(o => o.status === 'delivered').length,
-            cancelled: orders.filter(o => o.status === 'cancelled').length,
-            totalRevenue,
-        };
-    };
+    const orders = useMemo(() => {
+        return ordersData?.pages.flatMap(page => page.data) || [];
+    }, [ordersData]);
 
     const handleAction = async (orderId: string, action: string) => {
         if (action === 'ship') {
@@ -122,7 +59,7 @@ const OrdersList = () => {
                 alert("Erreur lors de l'expédition: " + error.message);
             } else {
                 alert(`✅ Commande marquée comme expédiée !\n\n🔑 Code de validation : ${otp}\n\nL'acheteur devra vous communiquer ce code à la livraison.`);
-                fetchOrders();
+                refreshAll();
             }
         } else if (action === 'deliver') {
             const otp = prompt("Entrez le code OTP communiqué par l'acheteur:");
@@ -132,12 +69,11 @@ const OrdersList = () => {
                     alert("❌ " + error.message);
                 } else {
                     alert("🎉 Livraison validée avec succès !\n\n💰 Les fonds ont été transférés sur votre portefeuille.");
-                    fetchOrders();
+                    refreshAll();
                 }
             }
         } else if (action === 'cancel') {
             if (confirm("Êtes-vous sûr de vouloir annuler cette commande ?")) {
-                // TODO: Implement cancel order
                 alert("Fonctionnalité d'annulation à implémenter");
             }
         } else if (action === 'review') {
@@ -147,6 +83,11 @@ const OrdersList = () => {
                 setReviewModalOpen(true);
             }
         }
+    };
+
+    const refreshAll = () => {
+        refetchOrders();
+        refetchCounts();
     };
 
     const handleViewDetails = (order: any) => {
@@ -194,17 +135,17 @@ const OrdersList = () => {
             </header>
 
             {/* Seller Stats Bar */}
-            {userRole === 'seller' && orders.length > 0 && (
-                <OrderStatsBar stats={getSellerStats()} />
+            {userRole === 'seller' && counts && counts.all > 0 && (
+                <OrderStatsBar stats={counts} />
             )}
 
             {/* Search Bar */}
-            {orders.length > 0 && (
+            {counts && counts.all > 0 && (
                 <div style={styles.searchContainer}>
                     <Search size={20} color="var(--text-secondary)" />
                     <input
                         type="text"
-                        placeholder="Rechercher une commande, produit, client..."
+                        placeholder="Rechercher par ID ou note..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         style={styles.searchInput}
@@ -213,18 +154,18 @@ const OrdersList = () => {
             )}
 
             {/* Tabs */}
-            {orders.length > 0 && (
+            {counts && counts.all > 0 && (
                 <OrderTabs
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
-                    counts={getTabCounts()}
+                    counts={counts}
                 />
             )}
 
             {/* Orders List */}
-            {filteredOrders.length > 0 ? (
+            {orders.length > 0 ? (
                 <div style={styles.ordersList}>
-                    {filteredOrders.map((order) => (
+                    {orders.map((order) => (
                         <OrderCard
                             key={order.id}
                             order={order}
@@ -233,6 +174,21 @@ const OrdersList = () => {
                             onAction={handleAction}
                         />
                     ))}
+
+                    {/* Infinite Scroll Load More */}
+                    {hasNextPage && (
+                        <button
+                            onClick={() => fetchNextPage()}
+                            disabled={isFetchingNextPage}
+                            style={styles.loadMoreBtn}
+                        >
+                            {isFetchingNextPage ? (
+                                <Loader2 className="spinner" size={20} />
+                            ) : (
+                                'Voir plus de commandes'
+                            )}
+                        </button>
+                    )}
                 </div>
             ) : searchQuery || activeTab !== 'all' ? (
                 <div style={styles.emptyState}>
@@ -276,7 +232,7 @@ const OrdersList = () => {
                     onClose={() => {
                         setReviewModalOpen(false);
                         setSelectedOrderForReview(null);
-                        fetchOrders();
+                        refreshAll();
                     }}
                     order={{
                         id: selectedOrderForReview.id,
@@ -337,6 +293,22 @@ const styles = {
         color: 'white',
         fontSize: '14px',
         fontWeight: '500',
+    },
+    loadMoreBtn: {
+        width: '100%',
+        padding: '14px',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '16px',
+        color: 'white',
+        fontSize: '14px',
+        fontWeight: '700',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '10px',
+        marginTop: '10px',
     },
     ordersList: {
         display: 'flex',

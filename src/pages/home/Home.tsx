@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, X, ChevronDown, Shield, Flame, TrendingUp, Package, Search, Tag } from 'lucide-react';
+import { ShoppingBag, X, ChevronDown, Shield, Flame, TrendingUp, Package, Search, Tag, Loader2 } from 'lucide-react';
 import ProductCard from '../../components/products/ProductCard';
-import { productService, Product } from '../../services/productService';
-import { categoryService } from '../../services/categoryService';
-import { Category } from '../../types/category';
+import { Product } from '../../services/productService';
 import { useSkeletonAnimation, SkeletonProductGrid } from '../../components/common/SkeletonLoader';
+import { useProducts } from '../../hooks/useProducts';
+import { useCategories } from '../../hooks/useCategories';
+import { useDebounce } from '../../hooks/useDebounce';
 
 type SortOption = 'relevance' | 'price_asc' | 'price_desc' | 'newest';
 
 const Home = () => {
-    useSkeletonAnimation(); // Ajoute l'animation CSS
-    const [products, setProducts] = useState<Product[]>([]);
-    const [categories, setCategories] = useState<Category[]>([]);
-    const [loading, setLoading] = useState(true);
+    useSkeletonAnimation();
     const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearch = useDebounce(searchQuery, 500);
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [sortBy, setSortBy] = useState<SortOption>('relevance');
     const [badges, setBadges] = useState({
@@ -26,25 +25,31 @@ const Home = () => {
     });
     const [isSortOpen, setIsSortOpen] = useState(false);
 
-    useEffect(() => {
-        fetchData();
-    }, []);
+    // Filter configuration for the query
+    const filters = useMemo(() => ({
+        search: debouncedSearch,
+        categories: selectedCategories,
+        verifiedOnly: badges.verifiedOnly,
+        moqOne: badges.moqOne,
+        promoOnly: badges.promoOnly,
+    }), [debouncedSearch, selectedCategories, badges.verifiedOnly, badges.moqOne, badges.promoOnly]);
 
-    const fetchData = async () => {
-        setLoading(true);
-        const [productsResult, categoriesResult] = await Promise.all([
-            productService.getProducts(),
-            categoryService.getActiveCategories()
-        ]);
+    // Data fetching using Query hooks
+    const { data: categoriesData, isLoading: categoriesLoading } = useCategories();
+    const {
+        data: productsData,
+        isLoading: productsLoading,
+        isFetchingNextPage,
+        hasNextPage,
+        fetchNextPage
+    } = useProducts(filters);
 
-        if (!productsResult.error && productsResult.data) {
-            setProducts(productsResult.data);
-        }
-        if (!categoriesResult.error && categoriesResult.data) {
-            setCategories(categoriesResult.data);
-        }
-        setLoading(false);
-    };
+    const categories = categoriesData || [];
+    const products = useMemo(() => {
+        return productsData?.pages.flatMap(page => page.products) || [];
+    }, [productsData]);
+
+    const loading = productsLoading || categoriesLoading;
 
     const handleCategoryToggle = (categoryId: string) => {
         setSelectedCategories(prev =>
@@ -60,55 +65,9 @@ const Home = () => {
 
     // Combined filtering and sorting logic
     const filteredProducts = useMemo(() => {
-        let results = products;
+        let results = [...products];
 
-        // Search query filter
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            results = results.filter(p =>
-                p.name.toLowerCase().includes(query) ||
-                p.description?.toLowerCase().includes(query) ||
-                p.profiles?.full_name?.toLowerCase().includes(query)
-            );
-        }
-
-        // Categories filter (multi-selection)
-        if (selectedCategories.length > 0) {
-            results = results.filter(p =>
-                p.category_id && selectedCategories.includes(p.category_id)
-            );
-        }
-
-        // Verified sellers only
-        if (badges.verifiedOnly) {
-            results = results.filter(p => p.profiles?.is_verified_seller);
-        }
-
-        // New products only (< 7 days)
-        if (badges.newOnly) {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            results = results.filter(p =>
-                new Date(p.created_at) > sevenDaysAgo
-            );
-        }
-
-        // Affiliation enabled only
-        if (badges.affiliateOnly) {
-            results = results.filter(p => p.is_affiliate_enabled);
-        }
-
-        // MOQ = 1 only
-        if (badges.moqOne) {
-            results = results.filter(p => p.min_order_quantity === 1);
-        }
-
-        // Promo products only (products with original_price)
-        if (badges.promoOnly) {
-            results = results.filter(p => p.original_price && p.original_price > p.price);
-        }
-
-        // Apply sorting
+        // Apply sorting locally on the already fetched results
         switch (sortBy) {
             case 'price_asc':
                 results.sort((a, b) => a.price - b.price);
@@ -126,7 +85,7 @@ const Home = () => {
         }
 
         return results;
-    }, [products, searchQuery, selectedCategories, badges, sortBy]);
+    }, [products, sortBy]);
 
     const sortOptions = [
         { value: 'relevance' as SortOption, label: 'Pertinence' },
@@ -166,6 +125,7 @@ const Home = () => {
 
                 {/* Categories Filter */}
                 <div style={styles.filterSection}>
+                    <p style={styles.filterLabel}>Catégories</p>
                     <div style={styles.categoriesList}>
                         {categories.map(cat => (
                             <div
@@ -189,6 +149,7 @@ const Home = () => {
 
                 {/* Special Badges Filter */}
                 <div style={styles.filterSection}>
+                    <p style={styles.filterLabel}>Filtres</p>
                     <div style={styles.badgesList}>
                         <div
                             onClick={() => handleBadgeToggle('verifiedOnly')}
@@ -223,22 +184,6 @@ const Home = () => {
                         </div>
 
                         <div
-                            onClick={() => handleBadgeToggle('affiliateOnly')}
-                            style={{
-                                ...styles.badgeChip,
-                                background: badges.affiliateOnly
-                                    ? 'rgba(0, 204, 102, 0.2)'
-                                    : 'rgba(255,255,255,0.05)',
-                                border: badges.affiliateOnly
-                                    ? '1px solid #00CC66'
-                                    : '1px solid rgba(255,255,255,0.1)',
-                            }}
-                        >
-                            <TrendingUp size={14} />
-                            <span>Affiliation</span>
-                        </div>
-
-                        <div
                             onClick={() => handleBadgeToggle('moqOne')}
                             style={{
                                 ...styles.badgeChip,
@@ -268,6 +213,23 @@ const Home = () => {
                         >
                             <Tag size={14} />
                             <span>Promotions</span>
+                        </div>
+
+                        {/* Badge Affiliation - Style distinctif en dernier */}
+                        <div
+                            onClick={() => handleBadgeToggle('affiliateOnly')}
+                            style={{
+                                ...styles.badgeChip,
+                                background: badges.affiliateOnly
+                                    ? 'rgba(0, 204, 102, 0.25)'
+                                    : 'rgba(255,255,255,0.03)',
+                                border: badges.affiliateOnly
+                                    ? '2px solid #00CC66'
+                                    : '1px dashed rgba(0, 204, 102, 0.5)',
+                            }}
+                        >
+                            <TrendingUp size={14} color="#00CC66" />
+                            <span>À revendre 💰</span>
                         </div>
                     </div>
                 </div>
@@ -346,25 +308,47 @@ const Home = () => {
                 {loading ? (
                     <SkeletonProductGrid count={6} columns={2} gap={16} />
                 ) : filteredProducts.length > 0 ? (
-                    <div style={styles.grid}>
-                        {filteredProducts.map(product => (
-                            <Link
-                                key={product.id}
-                                to={`/product/${product.id}`}
-                                style={{ textDecoration: 'none' }}
-                            >
-                                <ProductCard
-                                    image={product.image_url}
-                                    name={product.name}
-                                    price={product.price.toLocaleString()}
-                                    originalPrice={product.original_price?.toLocaleString()}
-                                    seller={product.profiles?.full_name || 'Vendeur'}
-                                    isVerified={product.profiles?.is_verified_seller || false}
-                                    moq={product.min_order_quantity}
-                                />
-                            </Link>
-                        ))}
-                    </div>
+                    <>
+                        <div style={styles.grid}>
+                            {filteredProducts.map(product => (
+                                <Link
+                                    key={product.id}
+                                    to={`/product/${product.id}`}
+                                    style={{ textDecoration: 'none' }}
+                                >
+                                    <ProductCard
+                                        image={product.image_url}
+                                        name={product.name}
+                                        price={product.price.toLocaleString()}
+                                        originalPrice={product.original_price?.toLocaleString()}
+                                        seller={product.profiles?.full_name || 'Vendeur'}
+                                        isVerified={product.profiles?.is_verified_seller || false}
+                                        moq={product.min_order_quantity}
+                                    />
+                                </Link>
+                            ))}
+                        </div>
+
+                        {/* Load More Section */}
+                        {(hasNextPage || isFetchingNextPage) && (
+                            <div style={styles.loadMoreContainer}>
+                                <button
+                                    onClick={() => fetchNextPage()}
+                                    disabled={isFetchingNextPage}
+                                    style={styles.loadMoreButton}
+                                >
+                                    {isFetchingNextPage ? (
+                                        <>
+                                            <Loader2 className="spinner" size={18} />
+                                            Chargement...
+                                        </>
+                                    ) : (
+                                        'Voir plus de produits'
+                                    )}
+                                </button>
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <div style={styles.emptyStateContainer}>
                         <div style={styles.emptyStateCard}>
@@ -437,6 +421,14 @@ const styles = {
         marginBottom: '12px',
         scrollbarWidth: 'none' as const,
         msOverflowStyle: 'none' as const,
+    },
+    filterLabel: {
+        fontSize: '12px',
+        fontWeight: '600',
+        color: 'var(--text-secondary)',
+        marginBottom: '8px',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.5px',
     },
     categoriesList: {
         display: 'flex',
@@ -605,7 +597,27 @@ const styles = {
         color: 'var(--text-secondary)',
         lineHeight: '1.5',
         maxWidth: '280px',
-    }
+    },
+    loadMoreContainer: {
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'center',
+        padding: '32px 0',
+    },
+    loadMoreButton: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '12px 24px',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: '16px',
+        color: 'white',
+        fontSize: '15px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+    },
 };
 
 export default Home;

@@ -1,21 +1,13 @@
-import { useEffect, useState } from 'react';
-import { TrendingUp, DollarSign, Package, Link as LinkIcon, Search, Clock, Pause, Play, Archive, Clipboard, ShoppingBag } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { productService, Product } from '../../services/productService';
-import { affiliateService, AffiliateLink } from '../../services/affiliateService';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { TrendingUp, DollarSign, Package, Link as LinkIcon, Search, Clock, Pause, Play, Archive, Clipboard, ShoppingBag, Loader2 } from 'lucide-react';
+import { productService } from '../../services/productService';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/common/Toast';
 import { useSkeletonAnimation, SkeletonAffiliateStats, SkeletonMissionList, SkeletonAffiliateLinkItem } from '../../components/common/SkeletonLoader';
-
-interface ProductSales {
-    product_id: string;
-    product_name: string;
-    product_image: string;
-    product_price: number;
-    sales_count: number;
-    total_earned: number;
-    last_sale: string;
-}
+import { useAffiliateStats } from '../../hooks/useAffiliateStats';
+import { useAffiliateLinks } from '../../hooks/useAffiliateLinks';
+import { useProducts } from '../../hooks/useProducts';
 
 const AffiliateDashboard = () => {
     const { user, profile } = useAuth();
@@ -23,126 +15,25 @@ const AffiliateDashboard = () => {
     useSkeletonAnimation();
 
     const [activeTab, setActiveTab] = useState<'wallet' | 'missions' | 'links' | 'sales'>('wallet');
-    const [products, setProducts] = useState<Product[]>([]);
-    const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([]);
-    const [salesByProduct, setSalesByProduct] = useState<ProductSales[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState<'commission' | 'price' | 'price_desc' | 'recent'>('recent');
-    const [stats, setStats] = useState({
+
+    // TanStack Query Hooks
+    const { data: affiliateData, isLoading: statsLoading } = useAffiliateStats(user?.id);
+    const { links, isLoading: linksLoading, pause, resume, archive, register } = useAffiliateLinks(user?.id);
+    const { data: productsData, isLoading: missionsLoading } = useProducts({ promoOnly: true }, 100);
+
+    const stats = affiliateData || {
         totalEarned: 0,
         pendingEarnings: 0,
         salesCount: 0,
-        pendingSalesCount: 0
-    });
-
-    useEffect(() => {
-        if (user) {
-            fetchAffiliateData();
-        }
-    }, [user]);
-
-    const fetchAffiliateData = async () => {
-        try {
-            setLoading(true);
-
-            // Fetch affiliate-enabled products
-            const { data } = await productService.getProducts();
-            if (data) setProducts(data.filter(p => p.is_affiliate_enabled));
-
-            if (user) {
-                // ✅ CORRECTION: Fetch delivered orders for earned commissions
-                const { data: deliveredOrders } = await supabase
-                    .from('orders')
-                    .select('amount, commission_amount')
-                    .eq('affiliate_id', user.id)
-                    .eq('status', 'delivered'); // Only delivered = earned
-
-                // ✅ CORRECTION: Fetch pending orders (paid/shipped but not delivered yet)
-                const { data: pendingOrders } = await supabase
-                    .from('orders')
-                    .select('amount, commission_amount')
-                    .eq('affiliate_id', user.id)
-                    .in('status', ['paid', 'shipped']); // Pending delivery
-
-                if (deliveredOrders) {
-                    const earned = deliveredOrders.reduce((sum, o) => sum + Number(o.commission_amount || 0), 0);
-                    setStats(prev => ({
-                        ...prev,
-                        totalEarned: earned,
-                        salesCount: deliveredOrders.length
-                    }));
-                }
-
-                if (pendingOrders) {
-                    const pending = pendingOrders.reduce((sum, o) => sum + Number(o.commission_amount || 0), 0);
-                    setStats(prev => ({
-                        ...prev,
-                        pendingEarnings: pending,
-                        pendingSalesCount: pendingOrders.length
-                    }));
-                }
-
-                await fetchAffiliateLinks();
-                await fetchAffiliateSales();
-            }
-        } catch (error) {
-            console.error("Error fetching affiliate data:", error);
-            showToast("Erreur lors du chargement des données", 'error');
-        } finally {
-            setLoading(false);
-        }
+        pendingSalesCount: 0,
+        salesByProduct: []
     };
 
-    const fetchAffiliateLinks = async () => {
-        if (!user) return;
-        // Fetch active and paused links (exclude archived)
-        const { data } = await affiliateService.getAffiliateLinks(user.id);
-        if (data) {
-            // Filter to show only active and paused
-            const visibleLinks = data.filter(link => link.status === 'active' || link.status === 'paused');
-            setAffiliateLinks(visibleLinks);
-        }
-    };
-
-    const fetchAffiliateSales = async () => {
-        if (!user) return;
-
-        // Fetch all delivered orders grouped by product
-        const { data: orders } = await supabase
-            .from('orders')
-            .select('product_id, commission_amount, created_at, products(name, image_url, price)')
-            .eq('affiliate_id', user.id)
-            .eq('status', 'delivered')
-            .order('created_at', { ascending: false });
-
-        if (orders) {
-            // Group by product
-            const grouped: { [key: string]: ProductSales } = {};
-
-            orders.forEach((order: any) => {
-                const productId = order.product_id;
-                const product = order.products;
-                if (!grouped[productId]) {
-                    grouped[productId] = {
-                        product_id: productId,
-                        product_name: product?.name || 'Produit',
-                        product_image: product?.image_url || '',
-                        product_price: product?.price || 0,
-                        sales_count: 0,
-                        total_earned: 0,
-                        last_sale: order.created_at
-                    };
-                }
-                grouped[productId].sales_count++;
-                grouped[productId].total_earned += Number(order.commission_amount || 0);
-            });
-
-            // Convert to array and sort by total earned
-            const salesArray = Object.values(grouped).sort((a, b) => b.total_earned - a.total_earned);
-            setSalesByProduct(salesArray);
-        }
-    };
+    const products = (productsData?.pages.flatMap(page => page.products) || []).filter(p => p.is_affiliate_enabled);
+    const salesByProduct = stats.salesByProduct;
+    const loading = statsLoading || linksLoading || missionsLoading;
 
     const copyLink = async (productId: string) => {
         if (!user) return;
@@ -150,16 +41,13 @@ const AffiliateDashboard = () => {
 
         try {
             await navigator.clipboard.writeText(url);
-
-            // ✅ CORRECTION: Validate product is still affiliate-enabled
-            const { error } = await affiliateService.registerPromotion(user.id, productId);
+            const { error } = await register({ affiliateId: user.id, productId });
 
             if (error) {
                 showToast(error.message, 'error');
                 return;
             }
 
-            await fetchAffiliateLinks();
             showToast("Lien copié et enregistré dans vos liens actifs !", 'success');
         } catch (err) {
             console.error("Failed to copy/register:", err);
@@ -168,35 +56,22 @@ const AffiliateDashboard = () => {
     };
 
     const handlePauseLink = async (linkId: string) => {
-        const { error } = await affiliateService.pausePromotion(linkId);
-        if (!error) {
-            showToast("Lien mis en pause", 'info');
-            await fetchAffiliateLinks();
-        } else {
-            showToast("Erreur lors de la pause", 'error');
-        }
+        const { error } = await pause(linkId);
+        if (!error) showToast("Lien mis en pause", 'info');
+        else showToast("Erreur lors de la pause", 'error');
     };
 
     const handleResumeLink = async (linkId: string) => {
-        const { error } = await affiliateService.resumePromotion(linkId);
-        if (!error) {
-            showToast("Lien réactivé", 'success');
-            await fetchAffiliateLinks();
-        } else {
-            showToast("Erreur lors de la réactivation", 'error');
-        }
+        const { error } = await resume(linkId);
+        if (!error) showToast("Lien réactivé", 'success');
+        else showToast("Erreur lors de la réactivation", 'error');
     };
 
     const handleArchiveLink = async (linkId: string) => {
         if (!window.confirm("Voulez-vous vraiment archiver ce lien ? Les commissions déjà gagnées resteront dans votre solde.")) return;
-
-        const { error } = await affiliateService.archivePromotion(linkId);
-        if (!error) {
-            showToast("Lien archivé", 'info');
-            await fetchAffiliateLinks();
-        } else {
-            showToast("Erreur lors de l'archivage", 'error');
-        }
+        const { error } = await archive(linkId);
+        if (!error) showToast("Lien archivé", 'info');
+        else showToast("Erreur lors de l'archivage", 'error');
     };
 
     const normalizeText = (text: string) => {
@@ -222,7 +97,9 @@ const AffiliateDashboard = () => {
             return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         });
 
-    const filteredLinks = affiliateLinks.filter(link => {
+    const filteredLinks = links.filter(link => {
+        // Exclude archived from view
+        if (link.status === 'archived') return false;
         const search = normalizeText(searchTerm);
         const name = link.products?.name ? normalizeText(link.products.name) : '';
         return name.includes(search);

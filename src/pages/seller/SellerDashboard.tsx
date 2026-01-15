@@ -1,97 +1,41 @@
-import React, { useEffect, useState } from 'react';
-import { Plus, Package, TrendingUp, DollarSign, Edit3, Star, FileCheck, Shield } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
-import { productService, Product } from '../../services/productService';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Package, TrendingUp, DollarSign, Edit3, Star, FileCheck, Shield, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { productService } from '../../services/productService';
 import { useAuth } from '../../hooks/useAuth';
 import StarRating from '../../components/reviews/StarRating';
-import { useSkeletonAnimation, SkeletonBar, SkeletonAvatar } from '../../components/common/SkeletonLoader';
+import { useSkeletonAnimation, SkeletonBar } from '../../components/common/SkeletonLoader';
 import KYCRequestModal from '../../components/kyc/KYCRequestModal';
-import { kycService } from '../../services/kycService';
+import { useSellerStats } from '../../hooks/useSellerStats';
+import { useProducts } from '../../hooks/useProducts';
+import { useQueryClient } from '@tanstack/react-query';
 
 const SellerDashboard = () => {
-    useSkeletonAnimation(); // Add skeleton animation CSS
+    useSkeletonAnimation();
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [products, setProducts] = useState<Product[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [stats, setStats] = useState({
+    const queryClient = useQueryClient();
+
+    const [kycModalOpen, setKycModalOpen] = useState(false);
+
+    // TanStack Query Hooks
+    const { data: sellerData, isLoading: statsLoading, refetch: refetchStats } = useSellerStats(user?.id);
+    const { data: productsData, isLoading: productsLoading } = useProducts({ sellerId: user?.id }, 100);
+
+    const stats = sellerData?.stats || {
         totalSales: 0,
         orderCount: 0,
-        activityPercent: 0,
         totalCommissions: 0,
         averageRating: 0,
         totalReviews: 0,
         totalSalesCount: 0
-    });
-
-    // KYC States
-    const [kycRequest, setKycRequest] = useState<any>(null);
-    const [kycModalOpen, setKycModalOpen] = useState(false);
-    const [profile, setProfile] = useState<any>(null);
-
-    useEffect(() => {
-        if (user) {
-            fetchSellerProducts();
-            fetchKYCStatus();
-        }
-    }, [user]);
-
-    const fetchKYCStatus = async () => {
-        if (!user?.id) return;
-
-        // Récupérer le profil
-        const { data: profileData } = await supabase
-            .from('profiles')
-            .select('is_verified_seller, kyc_verified, store_name, phone_number, avatar_url')
-            .eq('id', user.id)
-            .single();
-
-        setProfile(profileData);
-
-        // Récupérer la demande KYC
-        const { data: kycData } = await kycService.getSellerKYCRequest(user.id);
-        setKycRequest(kycData);
     };
+    const profile = sellerData?.profile;
+    const kycRequest = sellerData?.kycRequest;
 
-    const fetchSellerProducts = async () => {
-        setLoading(true);
-        // 1. Fetch products
-        const { data: productsData, error: productError } = await productService.getProducts();
-        if (!productError && productsData) {
-            const myProducts = productsData.filter(p => p.seller_id === user?.id);
-            setProducts(myProducts);
-        }
-
-        // 2. Fetch stats from delivered orders
-        const { data: ordersData, error: ordersError } = await supabase
-            .from('orders')
-            .select('amount, status, commission_amount')
-            .eq('seller_id', user?.id)
-            .eq('status', 'delivered');
-
-        // 3. Fetch seller profile stats (ratings, reviews, sales count)
-        const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('average_rating, total_reviews, total_sales_count')
-            .eq('id', user?.id)
-            .single();
-
-        if (!ordersError && ordersData) {
-            const total = ordersData.reduce((sum: number, o: any) => sum + Number(o.amount), 0);
-            const commissions = ordersData.reduce((sum: number, o: any) => sum + Number(o.commission_amount || 0), 0);
-            setStats({
-                totalSales: total,
-                orderCount: ordersData.length,
-                activityPercent: ordersData.length > 0 ? 100 : 0,
-                totalCommissions: commissions,
-                averageRating: profileData?.average_rating || 0,
-                totalReviews: profileData?.total_reviews || 0,
-                totalSalesCount: profileData?.total_sales_count || 0
-            });
-        }
-        setLoading(false);
-    };
+    const products = productsData?.pages.flatMap(page => page.products) || [];
+    const loading = statsLoading || productsLoading;
 
     const updateCommission = async (productId: string, value: string) => {
         const rate = parseFloat(value);
@@ -237,7 +181,7 @@ const SellerDashboard = () => {
                     </div>
                 </div>
 
-                {!profile?.kyc_verified && (
+                {!profile?.kyc_verified && !profile?.is_verified_seller && (
                     <>
                         {!kycRequest && (
                             <div style={styles.kycContent}>
@@ -274,10 +218,10 @@ const SellerDashboard = () => {
                     </>
                 )}
 
-                {profile?.kyc_verified && (
+                {(profile?.kyc_verified || profile?.is_verified_seller) && (
                     <div style={styles.kycContent}>
                         <div style={styles.kycApproved}>
-                            ✅ KYC vérifié - Vous pouvez retirer vos fonds
+                            ✅ Boutique vérifiée - Vous pouvez retirer vos fonds
                         </div>
                     </div>
                 )}
@@ -291,7 +235,7 @@ const SellerDashboard = () => {
                 existingRequest={kycRequest?.status === 'rejected' ? kycRequest : undefined}
                 onSuccess={() => {
                     setKycModalOpen(false);
-                    fetchKYCStatus();
+                    refetchStats();
                 }}
             />
 

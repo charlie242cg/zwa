@@ -32,4 +32,11 @@ export const authService = {
         const { data, error } = await supabase.auth.getSession();
         return { data, error };
     },
+
+    async updatePassword(newPassword: string) {
+        const { data, error } = await supabase.auth.updateUser({
+            password: newPassword
+        });
+        return { data, error };
+    },
 };

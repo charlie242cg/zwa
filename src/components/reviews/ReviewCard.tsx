@@ -1,4 +1,5 @@
-import { Check } from 'lucide-react';
+import { useState } from 'react';
+import { Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import StarRating from './StarRating';
 import { Review } from '../../services/reviewService';
 
@@ -7,7 +8,160 @@ interface ReviewCardProps {
     type?: 'product' | 'seller'; // Type d'avis à afficher
 }
 
+// Image Lightbox Modal Component
+const ImageLightbox: React.FC<{
+    images: string[];
+    currentIndex: number;
+    onClose: () => void;
+    onPrev: () => void;
+    onNext: () => void;
+}> = ({ images, currentIndex, onClose, onPrev, onNext }) => {
+    const [touchStart, setTouchStart] = useState<number | null>(null);
+    const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        setTouchEnd(e.targetTouches[0].clientX);
+    };
+
+    const handleTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+        const distance = touchStart - touchEnd;
+        if (distance > 50 && currentIndex < images.length - 1) onNext();
+        if (distance < -50 && currentIndex > 0) onPrev();
+    };
+
+    return (
+        <div style={lightboxStyles.overlay} onClick={onClose}>
+            <button style={lightboxStyles.closeButton} onClick={onClose}>
+                <X size={24} />
+            </button>
+
+            {/* Navigation buttons outside image container */}
+            {currentIndex > 0 && (
+                <button
+                    style={{ ...lightboxStyles.navButton, left: '16px' }}
+                    onClick={(e) => { e.stopPropagation(); onPrev(); }}
+                >
+                    <ChevronLeft size={28} />
+                </button>
+            )}
+
+            {currentIndex < images.length - 1 && (
+                <button
+                    style={{ ...lightboxStyles.navButton, right: '16px' }}
+                    onClick={(e) => { e.stopPropagation(); onNext(); }}
+                >
+                    <ChevronRight size={28} />
+                </button>
+            )}
+
+            <div
+                style={lightboxStyles.imageContainer}
+                onClick={(e) => e.stopPropagation()}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+            >
+                <img
+                    src={images[currentIndex]}
+                    alt={`Photo ${currentIndex + 1}`}
+                    style={lightboxStyles.image}
+                    draggable={false}
+                />
+            </div>
+
+            {images.length > 1 && (
+                <div style={lightboxStyles.counter}>
+                    {currentIndex + 1} / {images.length}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const lightboxStyles = {
+    overlay: {
+        position: 'fixed' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.95)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    closeButton: {
+        position: 'absolute' as const,
+        top: '16px',
+        right: '16px',
+        background: 'rgba(255, 255, 255, 0.1)',
+        border: 'none',
+        borderRadius: '50%',
+        width: '44px',
+        height: '44px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        cursor: 'pointer',
+        zIndex: 10,
+    },
+    imageContainer: {
+        position: 'relative' as const,
+        maxWidth: '70vw',
+        maxHeight: '80vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    image: {
+        maxWidth: '100%',
+        maxHeight: '80vh',
+        objectFit: 'contain' as const,
+        borderRadius: '8px',
+    },
+    navButton: {
+        position: 'fixed' as const,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        background: 'rgba(255, 255, 255, 0.2)',
+        backdropFilter: 'blur(10px)',
+        border: 'none',
+        borderRadius: '50%',
+        width: '44px',
+        height: '44px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        cursor: 'pointer',
+        zIndex: 10000,
+    },
+    counter: {
+        position: 'absolute' as const,
+        bottom: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'rgba(0, 0, 0, 0.6)',
+        color: 'white',
+        padding: '8px 16px',
+        borderRadius: '20px',
+        fontSize: '14px',
+        fontWeight: '600',
+    },
+};
+
 const ReviewCard: React.FC<ReviewCardProps> = ({ review, type = 'product' }) => {
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [lightboxIndex, setLightboxIndex] = useState(0);
+
     const buyerInitial = review.buyer?.full_name?.charAt(0)?.toUpperCase() || 'A';
     const buyerName = review.buyer?.full_name || 'Acheteur';
     const formattedDate = new Date(review.created_at).toLocaleDateString('fr-FR', {
@@ -23,6 +177,11 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ review, type = 'product' }) => 
 
     // Les images sont affichées uniquement pour les avis produit
     const showImages = type === 'product' && review.review_images && review.review_images.length > 0;
+
+    const openLightbox = (index: number) => {
+        setLightboxIndex(index);
+        setLightboxOpen(true);
+    };
 
     return (
         <div style={styles.card}>
@@ -58,9 +217,21 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ review, type = 'product' }) => 
                             src={img}
                             alt={`Photo ${index + 1}`}
                             style={styles.reviewImage}
+                            onClick={() => openLightbox(index)}
                         />
                     ))}
                 </div>
+            )}
+
+            {/* Image Lightbox */}
+            {lightboxOpen && review.review_images && (
+                <ImageLightbox
+                    images={review.review_images}
+                    currentIndex={lightboxIndex}
+                    onClose={() => setLightboxOpen(false)}
+                    onPrev={() => setLightboxIndex(Math.max(0, lightboxIndex - 1))}
+                    onNext={() => setLightboxIndex(Math.min(review.review_images!.length - 1, lightboxIndex + 1))}
+                />
             )}
         </div>
     );

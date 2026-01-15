@@ -182,6 +182,11 @@ class StoreService {
             return { data: null, error };
         }
     }
+
+    async getStoreReviews(sellerId: string, limit = 10) {
+        const { reviewService } = await import('./reviewService');
+        return reviewService.getSellerReviews(sellerId, limit);
+    }
 }
 
 export const storeService = new StoreService();

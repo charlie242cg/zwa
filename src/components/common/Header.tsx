@@ -1,13 +1,20 @@
+import { Link } from 'react-router-dom';
 import logo from '../../assets/logo.png';
+import NotificationBell from './NotificationBell';
 
 const Header = () => {
     return (
         <header style={styles.header}>
             <div style={styles.container}>
                 <div style={styles.left}>
-                    <div style={styles.logoContainer}>
-                        <img src={logo} alt="Zwa Logo" style={styles.logo} />
-                    </div>
+                    <Link to="/" style={styles.logoLink}>
+                        <div style={styles.logoContainer}>
+                            <img src={logo} alt="Zwa Logo" style={styles.logo} />
+                        </div>
+                    </Link>
+                </div>
+                <div style={styles.right}>
+                    <NotificationBell />
                 </div>
             </div>
         </header>
@@ -47,7 +54,16 @@ const styles = {
         height: '100%',
         width: 'auto',
         objectFit: 'contain' as const,
-    }
+    },
+    logoLink: {
+        textDecoration: 'none',
+        height: '100%',
+    },
+    right: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+    },
 };
 
 export default Header;

@@ -1,98 +1,51 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Package, ShieldCheck, Heart, Calendar, Phone, DollarSign, TrendingUp } from 'lucide-react';
-import { storeService, StoreProfile } from '../../services/storeService';
 import { useAuth } from '../../hooks/useAuth';
-import { reviewService, Review } from '../../services/reviewService';
 import ReviewCarousel from '../../components/reviews/ReviewCarousel';
 import ReviewsModal from '../../components/reviews/ReviewsModal';
 import StarRating from '../../components/reviews/StarRating';
-import { supabase } from '../../lib/supabase';
 import { useSkeletonAnimation, SkeletonBar, SkeletonAvatar, SkeletonProductGrid } from '../../components/common/SkeletonLoader';
+import { useStore } from '../../hooks/useStore';
+import { useProducts } from '../../hooks/useProducts';
 
 const StorePage = () => {
     useSkeletonAnimation();
     const { sellerId } = useParams<{ sellerId: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [store, setStore] = useState<StoreProfile | null>(null);
-    const [products, setProducts] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+
     const [filter, setFilter] = useState<'all' | 'bestsellers'>('all');
-    const [isFollowing, setIsFollowing] = useState(false);
-    const [reviews, setReviews] = useState<Review[]>([]);
-    const [reviewsLoading, setReviewsLoading] = useState(true);
     const [showReviewsModal, setShowReviewsModal] = useState(false);
-    const [financialStats, setFinancialStats] = useState({
-        totalRevenue: 0,
-        totalCommissions: 0,
-        grandTotal: 0
-    });
 
-    console.log('[StorePage] 🏪 Component rendered. Seller ID:', sellerId);
+    // TanStack Query Hooks
+    const {
+        store,
+        isLoadingStore,
+        isFollowing,
+        financialStats,
+        reviews,
+        isLoadingReviews,
+        follow,
+        unfollow,
+        isFollowPending
+    } = useStore(sellerId);
 
-    useEffect(() => {
-        if (sellerId) {
-            fetchStoreData(sellerId);
+    const {
+        data: productsData,
+        isLoading: isLoadingProducts,
+    } = useProducts({ sellerId: sellerId }, 50); // Fetch more for store page
+
+    const products = useMemo(() => {
+        const allProducts = productsData?.pages.flatMap(page => page.products) || [];
+        if (filter === 'bestsellers') {
+            // For now, simple client-side sorting if needed or just return all
+            return allProducts;
         }
-    }, [sellerId, filter]);
+        return allProducts;
+    }, [productsData, filter]);
 
-    const fetchStoreData = async (id: string) => {
-        setLoading(true);
-        console.log('[StorePage] 🔄 Fetching store data for:', id);
-
-        // Fetch store profile
-        const { data: storeData, error: storeError } = await storeService.getStoreById(id);
-        if (storeError || !storeData) {
-            console.error('[StorePage] ❌ Store not found:', storeError);
-            alert("Boutique introuvable");
-            navigate(-1);
-            return;
-        }
-
-        setStore(storeData);
-        console.log('[StorePage] ✅ Store loaded:', storeData.store_name || storeData.full_name);
-
-        // Fetch products
-        const { data: productsData, error: productsError } = await storeService.getStoreProducts(id, filter);
-        if (!productsError && productsData) {
-            setProducts(productsData);
-            console.log('[StorePage] ✅ Products loaded:', productsData.length);
-        }
-
-        // Check if following
-        if (user) {
-            const following = await storeService.isFollowing(user.id, id);
-            setIsFollowing(following);
-        }
-
-        // Fetch reviews
-        setReviewsLoading(true);
-        const { data: reviewsData } = await reviewService.getSellerReviews(id, 3);
-        if (reviewsData) {
-            setReviews(reviewsData);
-        }
-        setReviewsLoading(false);
-
-        // Fetch financial stats from delivered orders
-        const { data: ordersData } = await supabase
-            .from('orders')
-            .select('amount, commission_amount')
-            .eq('seller_id', id)
-            .eq('status', 'delivered');
-
-        if (ordersData) {
-            const totalRevenue = ordersData.reduce((sum: number, order: any) => sum + Number(order.amount), 0);
-            const totalCommissions = ordersData.reduce((sum: number, order: any) => sum + Number(order.commission_amount || 0), 0);
-            setFinancialStats({
-                totalRevenue,
-                totalCommissions,
-                grandTotal: totalRevenue + totalCommissions
-            });
-        }
-
-        setLoading(false);
-    };
+    const loading = isLoadingStore || isLoadingProducts;
 
     const handleFollow = async () => {
         if (!user || !sellerId) {
@@ -101,11 +54,9 @@ const StorePage = () => {
         }
 
         if (isFollowing) {
-            await storeService.unfollowStore(user.id, sellerId);
-            setIsFollowing(false);
+            unfollow(user.id);
         } else {
-            await storeService.followStore(user.id, sellerId);
-            setIsFollowing(true);
+            follow(user.id);
         }
     };
 
@@ -203,8 +154,8 @@ const StorePage = () => {
             <div style={{
                 ...styles.header,
                 backgroundImage: `linear-gradient(rgba(0,0,0,0.3) 0%, transparent 100%), ${store.store_banner_url
-                        ? `url(${store.store_banner_url})`
-                        : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                    ? `url(${store.store_banner_url})`
+                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
                     }`
             }}>
                 <button onClick={() => navigate(-1)} style={styles.backButton}>
@@ -322,27 +273,27 @@ const StorePage = () => {
             </div>
 
             {/* Financial Stats Section */}
-            {user?.id === sellerId && financialStats.grandTotal > 0 && (
+            {user?.id === sellerId && financialStats && financialStats.grandTotal > 0 && (
                 <div style={styles.financialSection}>
                     <h3 style={styles.sectionTitle}>💰 Chiffre d'affaires</h3>
                     <div style={styles.financialGrid}>
                         <div style={styles.financialCard}>
                             <DollarSign size={20} color="var(--primary)" />
                             <div style={styles.financialValue}>
-                                {financialStats.totalRevenue.toLocaleString()} FCFA
+                                {financialStats?.totalRevenue.toLocaleString()} FCFA
                             </div>
                             <div style={styles.financialLabel}>Ventes totales</div>
                         </div>
                         <div style={styles.financialCard}>
                             <TrendingUp size={20} color="#00CC66" />
                             <div style={styles.financialValue}>
-                                {financialStats.totalCommissions.toLocaleString()} FCFA
+                                {financialStats?.totalCommissions.toLocaleString()} FCFA
                             </div>
                             <div style={styles.financialLabel}>Commissions</div>
                         </div>
                         <div style={styles.financialCardHighlight}>
                             <div style={styles.financialValueLarge}>
-                                {financialStats.grandTotal.toLocaleString()} FCFA
+                                {financialStats?.grandTotal.toLocaleString()} FCFA
                             </div>
                             <div style={styles.financialLabelWhite}>Chiffre d'affaires total</div>
                         </div>
@@ -357,11 +308,11 @@ const StorePage = () => {
                         <h3 style={styles.sectionTitle}>📝 Avis sur le service ({store.total_reviews})</h3>
                     </div>
 
-                    {reviewsLoading ? (
+                    {isLoadingReviews ? (
                         <div style={styles.reviewsLoading}>Chargement des avis...</div>
                     ) : (
                         <ReviewCarousel
-                            reviews={reviews}
+                            reviews={reviews || []}
                             type="seller"
                             totalCount={store.total_reviews}
                             onViewAll={() => setShowReviewsModal(true)}

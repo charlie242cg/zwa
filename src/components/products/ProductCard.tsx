@@ -19,13 +19,19 @@ const ProductCard: React.FC<ProductCardProps> = ({ image, name, price, originalP
         ? Math.round(((parseFloat(originalPrice) - parseFloat(price)) / parseFloat(originalPrice)) * 100)
         : 0;
 
+    // Optimized image URL for low data (Supabase transformation)
+    const optimizedImage = image.includes('supabase.co/storage')
+        ? `${image}?width=400&quality=70`
+        : image;
+
     return (
         <div className="premium-card" style={styles.card}>
             <div style={styles.imageContainer}>
                 <img
-                    src={imgError ? 'https://via.placeholder.com/400x400?text=Produit' : image}
+                    src={imgError ? 'https://via.placeholder.com/400x400?text=Produit' : optimizedImage}
                     alt={name}
                     style={styles.image}
+                    loading="lazy"
                     onError={() => setImgError(true)}
                 />
                 {discountPercent > 0 && (

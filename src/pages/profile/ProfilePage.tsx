@@ -1,12 +1,16 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Shield, Wallet, Settings, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useProfile } from '../../hooks/useProfile';
 import { useSkeletonAnimation, SkeletonProfile } from '../../components/common/SkeletonLoader';
 
 const ProfilePage = () => {
     useSkeletonAnimation(); // Ajoute l'animation CSS
-    const { user, profile, loading, profileError, logout, retryFetchProfile } = useAuth();
+    const { user, logout } = useAuth();
+    const { data: profile, isLoading: profileLoading, error: profileError, refetch: retryFetchProfile } = useProfile(user?.id);
     const navigate = useNavigate();
+
+    const loading = profileLoading || !user;
 
     const handleLogout = async () => {
         await logout();
@@ -33,11 +37,11 @@ const ProfilePage = () => {
                     <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
                     <h2 style={{ color: '#FF4444', marginBottom: '16px' }}>Erreur de chargement</h2>
                     <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: '1.6' }}>
-                        {profileError}
+                        {profileError?.message || "Impossible de charger le profil"}
                     </p>
                     <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                         <button
-                            onClick={retryFetchProfile}
+                            onClick={() => retryFetchProfile()}
                             style={{
                                 padding: '12px 24px',
                                 borderRadius: '12px',

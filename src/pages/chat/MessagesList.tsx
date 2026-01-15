@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MessageSquare, ShoppingBag, ArrowRight } from 'lucide-react';
 import { chatService, Conversation } from '../../services/chatService';
 import { useAuth } from '../../hooks/useAuth';
+import { useConversations } from '../../hooks/useConversations';
 import { formatTimestamp } from '../../utils/timeFormat';
 import { useSkeletonAnimation, SkeletonConversationList } from '../../components/common/SkeletonLoader';
 
@@ -10,37 +11,10 @@ const MessagesList = () => {
     useSkeletonAnimation(); // Ajoute l'animation CSS
     const { user, profile } = useAuth();
     const navigate = useNavigate();
-    const [conversations, setConversations] = useState<Conversation[]>([]);
-    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (user) fetchConversations();
-    }, [user]);
+    const { data: conversations = [], isLoading: loading } = useConversations(user?.id);
 
-    const fetchConversations = async () => {
-        setLoading(true);
-        const { data, error } = await chatService.getConversations(user!.id);
-        if (!error && data) {
-            console.log('🔍 [ACHETEUR] Conversations reçues:', data);
-            console.log('🔍 [ACHETEUR] User ID:', user!.id);
-            data.forEach((conv, idx) => {
-                console.log(`📋 Conversation ${idx + 1}:`, {
-                    id: conv.id,
-                    isBuyer: user!.id === conv.buyer_id,
-                    last_message_for_buyer: conv.last_message_for_buyer,
-                    last_message_for_seller: conv.last_message_for_seller,
-                    last_sender_id: conv.last_sender_id,
-                    product: conv.products?.name
-                });
-            });
-            setConversations(data);
-        }
-        setLoading(false);
-    };
-
-    const handleOpenConversation = async (convId: string) => {
-        // Marquer comme lu avant d'ouvrir
-        await chatService.markAsRead(convId, user!.id);
+    const handleOpenConversation = (convId: string) => {
         navigate(`/chat/${convId}`);
     };
 
@@ -57,7 +31,7 @@ const MessagesList = () => {
                 <SkeletonConversationList count={5} gap={12} />
             ) : conversations.length > 0 ? (
                 <div style={styles.list}>
-                    {conversations.map((conv) => {
+                    {conversations.map((conv: Conversation) => {
                         const isBuyer = user?.id === conv.buyer_id;
                         const hasUnread = (conv.unread_count || 0) > 0;
 
@@ -185,70 +159,79 @@ const MessagesList = () => {
 
 const styles = {
     container: {
-        padding: '24px 20px',
-        maxWidth: '800px',
+        padding: '32px 20px 100px',
+        maxWidth: '700px',
         margin: '0 auto',
         minHeight: '100vh',
     },
     header: {
-        marginBottom: '32px',
+        marginBottom: '40px',
+        textAlign: 'center' as const,
     },
     title: {
-        fontSize: '28px',
+        fontSize: '32px',
         fontWeight: '900',
         color: 'white',
-        marginBottom: '8px',
+        marginBottom: '10px',
+        letterSpacing: '-1px',
     },
     subtitle: {
-        fontSize: '14px',
-        color: 'var(--text-secondary)',
+        fontSize: '15px',
+        color: 'rgba(255,255,255,0.5)',
+        fontWeight: '500',
     },
     list: {
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: '12px',
+        gap: '16px',
     },
     convItem: {
-        padding: '16px',
+        padding: '20px',
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
+        gap: '16px',
         cursor: 'pointer',
         position: 'relative' as const,
+        background: 'rgba(255,255,255,0.02)',
+        borderRadius: '24px',
+        border: '1px solid rgba(255,255,255,0.05)',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        overflow: 'hidden',
     },
     unreadBadgeTop: {
         position: 'absolute' as const,
-        top: 12,
-        right: 12,
-        background: '#FF4444',
+        top: 14,
+        right: 14,
+        background: 'linear-gradient(135deg, #FF4B2B 0%, #FF416C 100%)',
         color: 'white',
-        fontSize: '11px',
+        fontSize: '10px',
         fontWeight: '900',
-        borderRadius: '12px',
-        minWidth: '22px',
-        height: '22px',
+        borderRadius: '10px',
+        minWidth: '20px',
+        height: '20px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '0 6px',
-        border: '2px solid var(--background)',
-        boxShadow: '0 2px 8px rgba(255, 68, 68, 0.4)',
+        padding: '0 5px',
+        border: '2px solid #121212',
+        boxShadow: '0 4px 12px rgba(255, 65, 108, 0.4)',
         zIndex: 10,
     },
     avatar: {
-        width: '48px',
-        height: '48px',
-        background: 'rgba(255,255,255,0.05)',
-        borderRadius: '50%',
+        width: '56px',
+        height: '56px',
+        background: 'linear-gradient(135deg, rgba(138,43,226,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+        borderRadius: '20px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '18px',
-        fontWeight: '700',
+        fontSize: '22px',
+        fontWeight: '800',
         color: 'var(--primary)',
-        border: '1px solid rgba(138, 43, 226, 0.2)',
+        border: '1px solid rgba(255,255,255,0.1)',
         flexShrink: 0,
         overflow: 'hidden' as const,
+        boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
     },
     avatarImage: {
         width: '100%',
@@ -263,90 +246,102 @@ const styles = {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '4px',
+        marginBottom: '6px',
         gap: '8px',
     },
     partyName: {
-        fontSize: '16px',
-        fontWeight: '700',
+        fontSize: '17px',
+        fontWeight: '800',
         color: 'white',
         flex: 1,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap' as const,
+        letterSpacing: '-0.3px',
     },
     timestamp: {
-        fontSize: '11px',
-        color: 'var(--text-secondary)',
+        fontSize: '12px',
+        color: 'rgba(255,255,255,0.3)',
         fontWeight: '600',
         flexShrink: 0,
     },
     productRef: {
-        fontSize: '12px',
-        color: 'var(--text-secondary)',
-        display: 'flex',
+        fontSize: '11px',
+        color: 'rgba(255,255,255,0.4)',
+        display: 'inline-flex',
         alignItems: 'center',
-        gap: '6px',
-        marginBottom: '4px',
+        gap: '4px',
+        background: 'rgba(255,255,255,0.05)',
+        padding: '2px 8px',
+        borderRadius: '6px',
+        marginBottom: '8px',
+        fontWeight: '700',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.5px',
     },
     lastMessage: {
-        fontSize: '13px',
+        fontSize: '14px',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap' as const,
         lineHeight: '1.4',
+        color: 'rgba(255,255,255,0.6)',
     },
     rightSection: {
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        gap: '12px',
     },
     unreadDot: {
-        width: '8px',
-        height: '8px',
+        width: '10px',
+        height: '10px',
         borderRadius: '50%',
         background: 'var(--primary)',
         flexShrink: 0,
+        boxShadow: '0 0 12px var(--primary)',
     },
     emptyState: {
-        padding: '60px 20px',
+        padding: '80px 20px',
         textAlign: 'center' as const,
         display: 'flex',
         flexDirection: 'column' as const,
         alignItems: 'center',
-        gap: '16px',
+        gap: '20px',
     },
     emptyIcon: {
-        width: '80px',
-        height: '80px',
-        background: 'rgba(255,255,255,0.03)',
-        borderRadius: '50%',
+        width: '100px',
+        height: '100px',
+        background: 'rgba(138,43,226,0.05)',
+        borderRadius: '35%',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: '10px',
+        transform: 'rotate(-10deg)',
     },
     emptyTitle: {
-        fontSize: '18px',
-        fontWeight: '800',
+        fontSize: '22px',
+        fontWeight: '900',
         color: 'white',
     },
     emptySub: {
-        fontSize: '14px',
-        color: 'var(--text-secondary)',
-        maxWidth: '240px',
-        lineHeight: '1.5',
+        fontSize: '15px',
+        color: 'rgba(255,255,255,0.4)',
+        maxWidth: '280px',
+        lineHeight: '1.6',
     },
     exploreBtn: {
-        marginTop: '20px',
-        background: 'none',
-        border: '1px solid var(--primary)',
-        color: 'var(--primary)',
-        padding: '10px 24px',
-        borderRadius: '12px',
-        fontSize: '14px',
-        fontWeight: '700',
+        marginTop: '24px',
+        background: 'var(--primary)',
+        border: 'none',
+        color: 'white',
+        padding: '14px 32px',
+        borderRadius: '16px',
+        fontSize: '15px',
+        fontWeight: '800',
         cursor: 'pointer',
+        boxShadow: '0 10px 20px rgba(138, 43, 226, 0.3)',
+        transition: 'transform 0.2s',
     },
     centered: {
         textAlign: 'center' as const,

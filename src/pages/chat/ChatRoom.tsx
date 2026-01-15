@@ -5,20 +5,32 @@ import { chatService, Message, Conversation } from '../../services/chatService';
 import { orderService } from '../../services/orderService';
 import { paymentService } from '../../services/paymentService';
 import { useAuth } from '../../hooks/useAuth';
-import { useSkeletonAnimation, SkeletonChatHeader, SkeletonChatMessages } from '../../components/common/SkeletonLoader';
+import { useMessages } from '../../hooks/useMessages';
+import { useConversationDetail } from '../../hooks/useConversationDetail';
+import { useChatActions } from '../../hooks/useChatActions';
+import { SkeletonChatHeader, SkeletonChatMessages, useSkeletonAnimation } from '../../components/common/SkeletonLoader';
 
 const ChatRoom = () => {
     useSkeletonAnimation(); // Ajoute l'animation CSS
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [conversation, setConversation] = useState<Conversation | null>(null);
-    const [messages, setMessages] = useState<Message[]>([]);
+
+    // TanStack Query Hooks
+    const { data: conversation, isLoading: convLoading } = useConversationDetail(id);
+    const { data: messages = [], isLoading: messagesLoading } = useMessages(id);
+    const { sendMessage: sendMessageAction, markAsRead } = useChatActions(id);
+
     const [newMessage, setNewMessage] = useState('');
-    const [loading, setLoading] = useState(true);
     const [showOrderForm, setShowOrderForm] = useState(false);
     const [showMediaMenu, setShowMediaMenu] = useState(false);
-    const [orderParams, setOrderParams] = useState({ price: '', quantity: '1', notes: '' });
+    const [orderParams, setOrderParams] = useState({
+        price: '',
+        quantity: '1',
+        notes: '',
+        validity: '7', // jours
+        shipping: '7 jours'
+    });
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -28,21 +40,28 @@ const ChatRoom = () => {
     const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
     const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
+    const loading = convLoading || messagesLoading;
+
     useEffect(() => {
-        const style = document.createElement('style');
-        style.innerHTML = `
-            @keyframes slideUp {
-                from { transform: translateY(20px); opacity: 0; }
-                to { transform: translateY(0); opacity: 1; }
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; }
-                to { opacity: 1; }
-            }
-        `;
-        document.head.appendChild(style);
-        return () => { try { document.head.removeChild(style); } catch (e) { } };
-    }, []);
+        if (id && user) {
+            markAsRead(user.id);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id, user?.id]); // Only mark as read when entering the room or if user changes
+
+    // Set order price from product when conversation is loaded
+    useEffect(() => {
+        if (conversation?.products?.price) {
+            setOrderParams(prev => ({
+                ...prev,
+                price: conversation.products!.price.toString(),
+                quantity: '1',
+                notes: '',
+                validity: '7',
+                shipping: '7 jours'
+            }));
+        }
+    }, [conversation]);
 
     const STICKERS = [
         { id: 'cool', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=cool' },
@@ -54,29 +73,6 @@ const ChatRoom = () => {
     ];
 
     useEffect(() => {
-        if (id) {
-            fetchConversationDetails(id);
-            fetchMessages(id);
-
-            // Marquer messages comme lus
-            if (user) {
-                chatService.markAsRead(id, user.id);
-            }
-
-            const subscription = chatService.subscribeToMessages(id, (msg) => {
-                setMessages(prev => {
-                    if (prev.find(m => m.id === msg.id)) return prev;
-                    return [...prev, msg].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-                });
-            });
-
-            return () => {
-                subscription.unsubscribe();
-            };
-        }
-    }, [id, user]);
-
-    useEffect(() => {
         scrollToBottom();
     }, [messages]);
 
@@ -84,52 +80,22 @@ const ChatRoom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    const fetchConversationDetails = async (convId: string) => {
-        const { data, error } = await chatService.getConversationById(convId);
-        if (!error && data) {
-            setConversation(data);
-            setOrderParams(prev => ({ ...prev, price: data.products?.price.toString() || '' }));
-        }
-    };
-
-    const fetchMessages = async (convId: string) => {
-        setLoading(true);
-        const { data, error } = await chatService.getMessages(convId);
-        if (!error && data) {
-            setMessages(data);
-        }
-        setLoading(false);
-    };
-
     const handleSendMessage = async (e?: React.FormEvent, contentOverride?: string) => {
         if (e) e.preventDefault();
         const content = contentOverride !== undefined ? contentOverride : newMessage.trim();
 
-        // Allow sending if there's content OR a file OR it's a sticker (contentOverride)
         if (!content && !selectedFile && contentOverride === undefined) return;
         if (!id || !user) return;
 
-        // Fallback for media-only messages to satisfy NOT NULL constraints if any
         const finalContent = content || " ";
 
-        // Optimistic Message Object
-        const optimisticMsg: Message = {
-            id: `temp-${Date.now()}`,
-            conversation_id: id,
-            sender_id: user.id,
-            content: finalContent,
-            media_url: previewUrl || undefined,
-            media_type: previewType || undefined,
-            created_at: new Date().toISOString()
-        };
-
-        // 1. Update UI immediately (Optimistic UI)
-        setMessages(prev => [...prev, optimisticMsg]);
-        setNewMessage('');
+        // Save current selection for upload
         const prevFile = selectedFile;
         const prevPreview = previewUrl;
         const prevType = previewType;
 
+        // Clear UI immediately
+        setNewMessage('');
         setSelectedFile(null);
         setPreviewUrl(null);
         setPreviewType(null);
@@ -145,33 +111,21 @@ const ChatRoom = () => {
                 setIsUploading(false);
 
                 if (error) {
-                    console.error("Upload failed in ChatRoom handleSendMessage:", error);
-                    alert("Erreur lors de l'upload du média. Vérifiez votre connexion.");
-                    // Rollback optimistic message if upload fails
-                    setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+                    alert("Erreur lors de l'upload du média.");
                     return;
                 }
-
-                console.log("Upload successful, URL:", url);
                 mediaData = { url: url!, type: prevType! };
             }
 
-            console.log("Sending message to Supabase...", { finalContent, mediaData });
-            const { data, error } = await chatService.sendMessage(id, user.id, finalContent, mediaData);
+            await sendMessageAction({
+                content: finalContent,
+                senderId: user.id,
+                media: mediaData
+            });
 
-            if (error) {
-                console.error("Supabase sendMessage error:", error);
-                alert("Erreur lors de l'envoi du message.");
-                // Rollback
-                setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
-            } else if (data) {
-                console.log("Message sent successfully and confirmed by DB:", data.id);
-                // Replace optimistic message with the real one from DB
-                setMessages(prev => prev.map(m => m.id === optimisticMsg.id ? data : m));
-            }
         } catch (err) {
             console.error("Unexpected error in handleSendMessage flow:", err);
-            setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+            alert("Erreur lors de l'envoi du message.");
         }
     };
 
@@ -208,7 +162,11 @@ const ChatRoom = () => {
 
     const sendSticker = async (stickerUrl: string) => {
         if (!id || !user) return;
-        await chatService.sendMessage(id, user.id, '', undefined, stickerUrl);
+        await sendMessageAction({
+            content: '',
+            senderId: user.id,
+            stickerId: stickerUrl
+        });
         setShowStickers(false);
     };
 
@@ -219,6 +177,12 @@ const ChatRoom = () => {
         const quantity = parseInt(orderParams.quantity);
         const notes = orderParams.notes;
 
+        // Calculer la date d'expiration
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + parseInt(orderParams.validity));
+        const expiresAtIso = expiresAt.toISOString();
+        const shippingTimeline = orderParams.shipping;
+
         console.log('[ChatRoom] 💼 Creating/Updating order...');
 
         if (editingOrderId) {
@@ -226,7 +190,9 @@ const ChatRoom = () => {
             const { data, error } = await orderService.updateOrder(editingOrderId, {
                 amount,
                 quantity,
-                notes
+                notes,
+                expiresAt: expiresAtIso,
+                shippingTimeline
             });
 
             if (error) {
@@ -234,32 +200,25 @@ const ChatRoom = () => {
             } else if (data) {
                 console.log('[ChatRoom] ✅ Order updated successfully:', data);
 
-                // Update local state for ALL messages linked to this order
-                setMessages(prev => prev.map(m => {
-                    if (m.order_id === editingOrderId) {
-                        return { ...m, order: { ...m.order, ...data } };
-                    }
-                    return m;
-                }));
-
-                await chatService.sendMessage(
-                    conversation.id,
-                    user.id,
-                    `🔄 Offre mise à jour : ${orderParams.quantity}x ${conversation.products?.name} à ${orderParams.price} FCFA`
-                );
+                await sendMessageAction({
+                    content: `🔄 Offre mise à jour : ${orderParams.quantity}x ${conversation?.products?.name} à ${orderParams.price} FCFA`,
+                    senderId: user.id
+                });
                 setShowOrderForm(false);
                 setEditingOrderId(null);
             }
         } else {
             // Create new order
             const { data, error } = await orderService.createOrder({
-                buyerId: conversation.buyer_id,
-                sellerId: conversation.seller_id,
-                productId: conversation.product_id,
-                affiliateId: conversation.source_affiliate_id,
+                buyerId: conversation!.buyer_id,
+                sellerId: conversation!.seller_id,
+                productId: conversation!.product_id,
+                affiliateId: conversation!.source_affiliate_id,
                 amount,
                 quantity,
-                notes
+                notes,
+                expiresAt: expiresAtIso,
+                shippingTimeline
             });
 
             if (error) {
@@ -268,14 +227,11 @@ const ChatRoom = () => {
             } else if (data) {
                 console.log('[ChatRoom] ✅ Order created successfully:', data);
                 // Send special message linked to the order
-                await chatService.sendMessage(
-                    conversation.id,
-                    user.id,
-                    `📑 Offre Spéciale : ${conversation.products?.name}`,
-                    undefined,
-                    undefined,
-                    data.id
-                );
+                await sendMessageAction({
+                    content: `📑 Offre Spéciale : ${conversation?.products?.name}`,
+                    senderId: user.id,
+                    orderId: data.id
+                });
                 setShowOrderForm(false);
             }
         }
@@ -320,6 +276,31 @@ const ChatRoom = () => {
     // Déterminer l'avatar à afficher
     const avatarUrl = otherParty?.avatar_url;
     const avatarInitial = displayName.charAt(0).toUpperCase();
+
+    const renderMessageContent = (content: string) => {
+        // Simple regex to match [Label](url)
+        const parts = content.split(/(\[.*?\]\(.*?\))/g);
+
+        return parts.map((part, index) => {
+            const match = part.match(/\[(.*?)\]\((.*?)\)/);
+            if (match) {
+                const label = match[1];
+                const url = match[2];
+                return (
+                    <a
+                        key={index}
+                        href={url}
+                        target={url.startsWith('http') ? '_blank' : undefined}
+                        rel={url.startsWith('http') ? 'noopener noreferrer' : undefined}
+                        style={styles.link}
+                    >
+                        {label}
+                    </a>
+                );
+            }
+            return part;
+        });
+    };
 
     return (
         <div style={styles.container}>
@@ -371,8 +352,7 @@ const ChatRoom = () => {
                     const isSystem = msg.content.includes("Deal créé") && !isDeal;
 
                     if (isDeal) {
-                        const createdAt = new Date(msg.created_at);
-                        const expiresAt = new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+                        const expiresAt = msg.order?.expires_at ? new Date(msg.order.expires_at) : new Date(new Date(msg.created_at).getTime() + 7 * 24 * 60 * 60 * 1000);
                         const isExpired = new Date() > expiresAt;
                         const isPending = msg.order?.status === 'pending';
 
@@ -381,7 +361,16 @@ const ChatRoom = () => {
                         const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
                         const hoursLeft = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
-                        const timeString = daysLeft > 0 ? `${daysLeft}j restant${daysLeft > 1 ? 's' : ''}` : `${hoursLeft}h restante${hoursLeft > 1 ? 's' : ''}`;
+                        let timeString = '';
+                        if (isExpired) {
+                            timeString = 'EXPIRÉ';
+                        } else if (daysLeft > 0) {
+                            timeString = `${daysLeft}j restant${daysLeft > 1 ? 's' : ''}`;
+                        } else if (hoursLeft > 0) {
+                            timeString = `${hoursLeft}h restante${hoursLeft > 1 ? 's' : ''}`;
+                        } else {
+                            timeString = 'Moins d\'une heure';
+                        }
 
                         return (
                             <div key={msg.id} style={{
@@ -429,7 +418,7 @@ const ChatRoom = () => {
                                         </div>
                                         <div style={styles.alibabaInfoRow}>
                                             <span style={styles.alibabaLabel}>Date d'expédition</span>
-                                            <span style={styles.alibabaValue}>Expédier sous 7 jours</span>
+                                            <span style={styles.alibabaValue}>Expédier sous {msg.order?.shipping_timeline || '7 jours'}</span>
                                         </div>
                                     </div>
 
@@ -458,7 +447,9 @@ const ChatRoom = () => {
                                                     setOrderParams({
                                                         price: ((msg.order?.amount || 0) / (msg.order?.quantity || 1)).toString(),
                                                         quantity: (msg.order?.quantity || 1).toString(),
-                                                        notes: msg.order?.notes || ''
+                                                        notes: msg.order?.notes || '',
+                                                        validity: '7',
+                                                        shipping: msg.order?.shipping_timeline || '7 jours'
                                                     });
                                                     setShowOrderForm(true);
                                                 }}
@@ -512,7 +503,7 @@ const ChatRoom = () => {
                                     {msg.sticker_id && (
                                         <img src={msg.sticker_id} alt="Sticker" style={styles.stickerContent} />
                                     )}
-                                    {msg.content && <div style={styles.messageText}>{msg.content}</div>}
+                                    {msg.content && <div style={styles.messageText}>{renderMessageContent(msg.content)}</div>}
                                     <div style={styles.messageMeta}>
                                         <div style={styles.messageTime}>
                                             {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -628,11 +619,42 @@ const ChatRoom = () => {
                         <div style={styles.formGroup}>
                             <label style={styles.label}>Description (Couleur, Taille, Adresse...)</label>
                             <textarea
-                                style={{ ...styles.inputField, height: '80px', resize: 'none' }}
+                                style={{ ...styles.inputField, height: '60px', resize: 'none' }}
                                 value={orderParams.notes}
                                 onChange={e => setOrderParams(prev => ({ ...prev, notes: e.target.value }))}
                                 placeholder="Indiquez les options choisies et l'adresse de livraison..."
                             />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <div style={{ ...styles.formGroup, flex: 1 }}>
+                                <label style={styles.label}>Validité de l'offre</label>
+                                <select
+                                    style={styles.inputField}
+                                    value={orderParams.validity}
+                                    onChange={e => setOrderParams(prev => ({ ...prev, validity: e.target.value }))}
+                                >
+                                    <option value="1">24 Heures</option>
+                                    <option value="3">3 Jours</option>
+                                    <option value="7">7 Jours</option>
+                                    <option value="30">30 Jours</option>
+                                </select>
+                            </div>
+
+                            <div style={{ ...styles.formGroup, flex: 1 }}>
+                                <label style={styles.label}>Délai d'expédition</label>
+                                <select
+                                    style={styles.inputField}
+                                    value={orderParams.shipping}
+                                    onChange={e => setOrderParams(prev => ({ ...prev, shipping: e.target.value }))}
+                                >
+                                    <option value="Immédiat">Immédiat</option>
+                                    <option value="24-48h">24-48h</option>
+                                    <option value="3 jours">3 Jours</option>
+                                    <option value="7 jours">7 Jours</option>
+                                    <option value="15 jours">15 Jours</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div style={styles.popupActions}>
@@ -691,7 +713,7 @@ const styles = {
         height: '100vh',
         display: 'flex',
         flexDirection: 'column' as const,
-        background: 'var(--background)',
+        background: '#0D0D0D', // Fait ressortir les éléments premium
         position: 'fixed' as const,
         top: 0,
         left: 0,
@@ -700,39 +722,48 @@ const styles = {
         zIndex: 2000,
     },
     header: {
-        padding: '12px 16px',
-        background: 'rgba(18, 18, 18, 0.9)',
-        backdropFilter: 'blur(10px)',
+        padding: '16px 18px',
+        background: 'rgba(18, 18, 18, 0.95)',
+        backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        zIndex: 50,
     },
     headerLeft: {
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
+        gap: '14px',
     },
     backButton: {
-        background: 'none',
+        background: 'rgba(255,255,255,0.03)',
         border: 'none',
         color: 'white',
         cursor: 'pointer',
-        padding: '4px',
-    },
-    partyAvatar: {
         width: '40px',
         height: '40px',
-        borderRadius: '50%',
+        borderRadius: '14px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    },
+    partyAvatar: {
+        width: '44px',
+        height: '44px',
+        borderRadius: '16px',
         background: 'linear-gradient(135deg, var(--primary), #FF1493)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '16px',
-        fontWeight: '700',
+        fontSize: '18px',
+        fontWeight: '800',
         color: 'white',
         flexShrink: 0,
         overflow: 'hidden' as const,
+        boxShadow: '0 8px 16px rgba(0,0,0,0.3)',
+        border: '1px solid rgba(255,255,255,0.1)',
     },
     partyAvatarImage: {
         width: '100%',
@@ -742,132 +773,185 @@ const styles = {
     partyInfo: {
         display: 'flex',
         flexDirection: 'column' as const,
+        gap: '2px',
     },
     partyName: {
-        fontSize: '15px',
-        fontWeight: '700',
+        fontSize: '16px',
+        fontWeight: '800',
         color: 'white',
+        letterSpacing: '-0.3px',
     },
     productRef: {
-        fontSize: '10px',
-        color: 'var(--text-secondary)',
+        fontSize: '11px',
+        color: 'rgba(255,255,255,0.4)',
         fontWeight: '600',
+        maxWidth: '180px',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap' as const,
     },
     actionBtn: {
         background: 'var(--primary)',
         border: 'none',
-        borderRadius: '12px',
-        padding: '6px 12px',
+        borderRadius: '14px',
+        padding: '8px 16px',
         color: 'white',
-        fontSize: '13px',
-        fontWeight: '700',
+        fontSize: '14px',
+        fontWeight: '800',
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
+        gap: '8px',
         cursor: 'pointer',
+        boxShadow: '0 8px 20px rgba(138, 43, 226, 0.3)',
+        transition: 'transform 0.2s',
     },
     trustBanner: {
-        background: 'rgba(0, 204, 102, 0.05)',
-        padding: '8px 16px',
+        background: 'rgba(0, 204, 102, 0.03)',
+        padding: '10px 16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: '8px',
         fontSize: '11px',
-        color: 'rgba(0, 204, 102, 0.8)',
-        borderBottom: '1px solid rgba(0, 204, 102, 0.1)',
+        color: 'rgba(0, 204, 102, 0.7)',
+        fontWeight: '700',
+        borderBottom: '1px solid rgba(0, 204, 102, 0.05)',
+        letterSpacing: '0.2px',
     },
     messagesArea: {
         flex: 1,
         overflowY: 'auto' as const,
-        padding: '16px',
+        padding: '24px 18px',
         display: 'flex',
         flexDirection: 'column' as const,
         gap: '12px',
+        background: 'radial-gradient(circle at top right, rgba(138,43,226,0.03) 0%, transparent 40%)',
     },
     messageWrapper: {
         display: 'flex',
         width: '100%',
+        margin: '2px 0',
     },
     messageBubble: {
-        maxWidth: '80%',
-        padding: '10px 14px',
-        borderRadius: '16px',
+        maxWidth: '82%',
+        padding: '12px 16px',
+        borderRadius: '22px',
         position: 'relative' as const,
+        boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+        wordBreak: 'break-word' as const,
     },
     messageText: {
-        fontSize: '14px',
+        fontSize: '15px',
         color: 'white',
-        lineHeight: '1.4',
+        lineHeight: '1.5',
+        whiteSpace: 'pre-wrap' as const,
+    },
+    messageMeta: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: '4px',
+        marginTop: '4px',
     },
     messageTime: {
-        fontSize: '9px',
-        color: 'rgba(255,255,255,0.5)',
-        textAlign: 'right' as const,
-        marginTop: '4px',
-        padding: '0 4px',
+        fontSize: '10px',
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '500',
     },
-    mediaContainer: {
-        borderRadius: '12px',
-        overflow: 'hidden',
-        marginBottom: '4px',
-        background: 'rgba(0,0,0,0.2)',
+    statusIcon: {
+        display: 'flex',
+        alignItems: 'center',
     },
-    mediaContent: {
-        maxWidth: '100%',
-        maxHeight: '300px',
-        display: 'block',
-        cursor: 'pointer',
+    systemMsg: {
+        background: 'rgba(255,255,255,0.03)',
+        color: 'rgba(255,255,255,0.4)',
+        padding: '8px 20px',
+        borderRadius: '100px',
+        fontSize: '12px',
+        fontWeight: '600',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        margin: '16px auto',
+        border: '1px solid rgba(255,255,255,0.05)',
     },
-    stickerContent: {
-        width: '120px',
-        height: '120px',
-        display: 'block',
+    inputArea: {
+        padding: '16px 18px 34px',
+        background: '#121212',
+        borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+        boxShadow: '0 -10px 30px rgba(0,0,0,0.5)',
     },
-    stickerPicker: {
-        background: '#1a1a1a',
-        borderRadius: '24px',
-        padding: '20px',
-        width: 'auto',
-        maxWidth: '320px',
-        boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        animation: 'slideUp 0.3s ease-out',
-    },
-    stickerGrid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
+    inputBar: {
+        display: 'flex',
+        alignItems: 'center',
         gap: '12px',
     },
-    stickerItem: {
-        background: 'rgba(255,255,255,0.05)',
-        border: 'none',
-        borderRadius: '12px',
-        padding: '8px',
-        cursor: 'pointer',
+    plusButton: {
+        width: '46px',
+        height: '46px',
+        borderRadius: '16px',
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.05)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+    },
+    inputWrapper: {
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        background: 'rgba(255,255,255,0.03)',
+        padding: '4px 6px 4px 18px',
+        borderRadius: '22px',
+        border: '1px solid rgba(255,255,255,0.05)',
+        transition: 'all 0.2s',
+    },
+    inputSimple: {
+        flex: 1,
+        background: 'none',
+        border: 'none',
+        color: 'white',
+        fontSize: '15px',
+        padding: '10px 0',
+        outline: 'none',
+    },
+    iconButton: {
+        background: 'none',
+        border: 'none',
+        padding: '8px',
+        cursor: 'pointer',
+        color: 'rgba(255,255,255,0.4)',
+        display: 'flex',
+        alignItems: 'center',
         transition: 'transform 0.2s',
     },
-    stickerPreview: {
-        width: '100%',
-        height: 'auto',
+    sendButton: {
+        width: '42px',
+        height: '42px',
+        background: 'var(--primary)',
+        border: 'none',
+        borderRadius: '14px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        boxShadow: '0 6px 15px rgba(138, 43, 226, 0.4)',
+        transition: 'all 0.2s',
     },
     previewBar: {
-        background: 'rgba(255,255,255,0.02)',
-        padding: '12px',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
-        display: 'flex',
-        gap: '12px',
+        marginBottom: '12px',
     },
     previewContainer: {
         position: 'relative' as const,
-        width: '80px',
-        height: '80px',
-        borderRadius: '12px',
+        width: '72px',
+        height: '72px',
+        borderRadius: '16px',
         overflow: 'hidden',
-        background: 'rgba(0,0,0,0.2)',
+        border: '2px solid var(--primary)',
+        boxShadow: '0 8px 20px rgba(0,0,0,0.4)',
     },
     previewContent: {
         width: '100%',
@@ -880,89 +964,14 @@ const styles = {
         right: '4px',
         width: '20px',
         height: '20px',
-        background: 'rgba(0,0,0,0.5)',
+        background: 'rgba(0,0,0,0.6)',
         border: 'none',
         borderRadius: '50%',
         color: 'white',
-        fontSize: '14px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'pointer',
-        backdropFilter: 'blur(4px)',
-    },
-    systemMsg: {
-        background: 'rgba(0, 204, 102, 0.12)',
-        color: '#00CC66',
-        padding: '8px 16px',
-        borderRadius: '20px',
-        fontSize: '12px',
-        fontWeight: '700',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        margin: '10px 0',
-    },
-    inputArea: {
-        padding: '12px 16px',
-        paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
-        background: '#1a1a1a',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-    },
-    inputBar: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-    },
-    plusButton: {
-        background: 'rgba(138, 43, 226, 0.1)',
-        border: 'none',
-        width: '40px',
-        height: '40px',
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-    },
-    inputWrapper: {
-        flex: 1,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        background: 'rgba(255,255,255,0.05)',
-        padding: '6px 6px 6px 14px',
-        borderRadius: '24px',
-        border: '1px solid rgba(255,255,255,0.08)',
-    },
-    inputSimple: {
-        flex: 1,
-        background: 'none',
-        border: 'none',
-        color: 'white',
-        fontSize: '14px',
-        outline: 'none',
-    },
-    iconButton: {
-        background: 'none',
-        border: 'none',
-        padding: '4px',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-    },
-    sendButton: {
-        width: '32px',
-        height: '32px',
-        background: 'var(--primary)',
-        border: 'none',
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        opacity: 1,
-        transition: 'opacity 0.2s',
     },
     mediaOverlay: {
         position: 'fixed' as const,
@@ -970,323 +979,313 @@ const styles = {
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'rgba(0,0,0,0.4)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 2500,
+        background: 'rgba(0,0,0,0.85)',
+        backdropFilter: 'blur(10px)',
+        zIndex: 3000,
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'center',
-        padding: '20px',
-        paddingBottom: '100px',
+        padding: '24px',
+        paddingBottom: '40px',
+        animation: 'fadeIn 0.3s ease',
     },
     mediaMenu: {
-        background: '#1a1a1a',
-        borderRadius: '24px',
-        padding: '24px',
+        background: '#181818',
+        borderRadius: '32px',
+        padding: '30px 24px',
         width: '100%',
-        maxWidth: '360px',
-        boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        animation: 'slideUp 0.3s ease-out',
-    },
-    mediaHeader: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '4px',
-    },
-    mediaTitle: {
-        fontSize: '20px',
-        fontWeight: '800',
-        color: 'white',
-    },
-    closeBtn: {
-        background: 'none',
-        border: 'none',
-        color: 'rgba(255,255,255,0.5)',
-        cursor: 'pointer',
-        padding: '4px',
-    },
-    mediaSubtitle: {
-        fontSize: '13px',
-        color: 'var(--text-secondary)',
-        marginBottom: '24px',
-    },
-    formGroup: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '8px',
-        marginBottom: '16px',
-    },
-    inputField: {
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '12px',
-        padding: '12px 16px',
-        color: 'white',
-        fontSize: '15px',
-        outline: 'none',
-        transition: 'border-color 0.2s',
+        maxWidth: '400px',
+        boxShadow: '0 -20px 50px rgba(0,0,0,0.5)',
+        border: '1px solid rgba(255,255,255,0.08)',
     },
     mediaGrid: {
-        display: 'flex',
-        gap: '24px',
-        justifyContent: 'center',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '20px',
     },
     mediaItem: {
         display: 'flex',
         flexDirection: 'column' as const,
         alignItems: 'center',
-        gap: '8px',
+        gap: '10px',
         background: 'none',
         border: 'none',
         color: 'white',
-        fontSize: '11px',
-        fontWeight: '600',
         cursor: 'pointer',
     },
     mediaIcon: {
-        width: '50px',
-        height: '50px',
-        borderRadius: '15px',
+        width: '64px',
+        height: '64px',
+        borderRadius: '22px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         color: 'white',
+        boxShadow: '0 10px 20px rgba(0,0,0,0.3)',
     },
-    overlay: {
-        position: 'fixed' as const,
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.8)',
-        backdropFilter: 'blur(5px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-        zIndex: 3000,
-    },
-    messageMeta: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        gap: '4px',
-        marginTop: '2px',
-    },
-    statusIcon: {
-        display: 'flex',
-        alignItems: 'center',
-    },
-    popup: {
+    mediaContainer: {
         width: '100%',
-        maxWidth: '340px',
-        padding: '24px',
-        background: '#1a1a1a',
-        borderRadius: '24px',
-        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        background: '#000',
     },
-    popupTitle: {
-        fontSize: '20px',
-        fontWeight: '800',
+    mediaContent: {
+        maxWidth: '100%',
+        maxHeight: '320px',
+        display: 'block',
+    },
+    link: {
+        color: 'var(--primary)',
+        textDecoration: 'underline',
+        fontWeight: '700',
+    },
+    stickerContent: {
+        width: '130px',
+        height: '130px',
+    },
+    stickerPicker: {
+        background: '#181818',
+        borderRadius: '32px',
+        padding: '20px',
+        maxWidth: '400px',
+        maxHeight: '55vh',
+        overflowY: 'auto' as const,
+        border: '1px solid rgba(255,255,255,0.08)',
+    },
+    stickerGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '12px',
+    },
+    stickerItem: {
+        background: 'rgba(255,255,255,0.02)',
+        border: 'none',
+        borderRadius: '16px',
+        padding: '8px',
+        cursor: 'pointer',
+    },
+    stickerPreview: {
+        width: '100%',
+    },
+    mediaHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: '4px',
+    },
+    mediaTitle: {
+        fontSize: '22px',
+        fontWeight: '900',
         color: 'white',
+        letterSpacing: '-0.5px',
     },
-    popupSubtitle: {
-        fontSize: '13px',
-        color: 'var(--text-secondary)',
-        marginBottom: '20px',
+    mediaSubtitle: {
+        fontSize: '14px',
+        color: 'rgba(255,255,255,0.4)',
+        marginBottom: '24px',
     },
-    form: {
+    closeBtn: {
+        background: 'rgba(255,255,255,0.03)',
+        border: 'none',
+        borderRadius: '50%',
+        width: '36px',
+        height: '36px',
         display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '16px',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        color: '#fff',
     },
-    inputGroup: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '6px',
+    formGroup: {
+        marginBottom: '18px',
     },
     label: {
         fontSize: '12px',
-        fontWeight: '600',
-        color: 'var(--text-secondary)',
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        textTransform: 'uppercase' as const,
+        marginBottom: '8px',
+        display: 'block',
+        letterSpacing: '0.5px',
     },
-    input: {
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '10px',
-        padding: '12px',
+    inputField: {
+        width: '100%',
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '16px',
+        padding: '14px 18px',
         color: 'white',
         fontSize: '15px',
         outline: 'none',
     },
     popupActions: {
         display: 'flex',
-        gap: '12px',
-        marginTop: '10px',
+        gap: '14px',
+        marginTop: '28px',
     },
     cancelBtn: {
         flex: 1,
-        background: 'rgba(255,255,255,0.05)',
-        border: 'none',
-        padding: '12px',
-        borderRadius: '10px',
+        padding: '16px',
+        borderRadius: '18px',
+        background: 'none',
+        border: '1px solid rgba(255,255,255,0.1)',
         color: 'white',
-        fontWeight: '600',
+        fontSize: '15px',
+        fontWeight: '700',
         cursor: 'pointer',
     },
     confirmBtn: {
         flex: 2,
+        padding: '16px',
+        borderRadius: '18px',
         background: 'var(--primary)',
-        border: 'none',
-        padding: '12px',
-        borderRadius: '10px',
         color: 'white',
-        fontWeight: '800',
+        fontSize: '16px',
+        fontWeight: '900',
+        border: 'none',
         cursor: 'pointer',
+        boxShadow: '0 10px 25px rgba(138, 43, 226, 0.4)',
+    },
+    alibabaCard: {
+        width: '100%',
+        maxWidth: '320px',
+        background: '#1A1A1A',
+        borderRadius: '28px',
+        overflow: 'hidden',
+        border: '1px solid rgba(138,43,226,0.15)',
+        boxShadow: '0 15px 40px rgba(0,0,0,0.5)',
+    },
+    alibabaHeader: {
+        padding: '16px 20px',
+        background: 'linear-gradient(135deg, rgba(138,43,226,0.1) 0%, transparent 100%)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+    },
+    alibabaHeaderTitle: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '14px',
+        fontWeight: '800',
+        color: '#fff',
+    },
+    alibabaProductTitle: {
+        padding: '18px 20px 8px',
+        fontSize: '18px',
+        fontWeight: '900',
+        color: 'white',
+        lineHeight: '1.3',
+    },
+    alibabaInfoBox: {
+        padding: '0 20px 18px',
+    },
+    alibabaInfoRow: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        marginTop: '12px',
+    },
+    alibabaLabel: {
+        fontSize: '11px',
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '600',
+        textTransform: 'uppercase' as const,
+    },
+    alibabaValueBold: {
+        fontSize: '16px',
+        color: 'var(--primary)',
+        fontWeight: '900',
+    },
+    alibabaValue: {
+        fontSize: '13px',
+        color: 'white',
+        fontWeight: '600',
+    },
+    alibabaStatusText: {
+        fontSize: '12px',
+        color: '#00FFCC',
+        fontWeight: '800',
+        textTransform: 'uppercase' as const,
+    },
+    alibabaNotesBox: {
+        margin: '0 20px 20px',
+        padding: '14px',
+        background: 'rgba(255,255,255,0.02)',
+        borderRadius: '18px',
+        border: '1px solid rgba(255,255,255,0.05)',
+    },
+    alibabaNotesContent: {
+        fontSize: '13px',
+        color: 'rgba(255,255,255,0.8)',
+        lineHeight: '1.5',
+        marginTop: '6px',
+    },
+    dealActions: {
+        padding: '0 20px 20px',
+        display: 'flex',
+        gap: '12px',
+    },
+    alibabaPayButton: {
+        flex: 1,
+        padding: '14px',
+        background: 'var(--primary)',
+        color: 'white',
+        borderRadius: '16px',
+        border: 'none',
+        fontSize: '15px',
+        fontWeight: '900',
+        cursor: 'pointer',
+        boxShadow: '0 8px 20px rgba(138, 43, 226, 0.4)',
+    },
+    editDealBtn: {
+        flex: 1,
+        padding: '14px',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: '16px',
+        color: 'white',
+        fontSize: '13px',
+        fontWeight: '700',
+        cursor: 'pointer',
+    },
+    expiryBadge: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        fontSize: '10px',
+        fontWeight: '800',
+        color: '#FFB800',
+        background: 'rgba(255,184,0,0.1)',
+        padding: '4px 10px',
+        borderRadius: '8px',
+    },
+    alibabaExpiredBox: {
+        padding: '12px',
+        textAlign: 'center' as const,
+        fontSize: '12px',
+        color: '#ff4d4d',
+        fontWeight: '700',
+        background: 'rgba(255,77,77,0.05)',
+        width: '100%',
+        marginBottom: '20px',
+        borderRadius: '16px',
+    },
+    alibabaExpiryHint: {
+        padding: '14px',
+        textAlign: 'center' as const,
+        fontSize: '10px',
+        color: 'rgba(255,255,255,0.2)',
+        fontWeight: '600',
+        borderTop: '1px solid rgba(255,255,255,0.03)',
     },
     centered: {
         height: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--background)',
-        color: 'var(--text-secondary)',
-    },
-    alibabaCard: {
-        width: '90%',
-        maxWidth: '340px',
-        background: 'linear-gradient(145deg, rgba(138, 43, 226, 0.15), rgba(0,0,0,0.8))',
-        backdropFilter: 'blur(15px)',
-        borderRadius: '24px',
-        padding: '24px',
-        boxShadow: '0 10px 40px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.1)',
-        animation: 'slideUp 0.4s ease-out',
-        color: '#fff',
-    },
-    alibabaHeader: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '16px',
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
-        paddingBottom: '12px',
-    },
-    alibabaHeaderTitle: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        fontSize: '16px',
-        fontWeight: '700',
-    },
-    alibabaProductTitle: {
-        fontSize: '14px',
-        color: 'rgba(255,255,255,0.6)',
-        marginBottom: '20px',
-    },
-    alibabaInfoBox: {
-        background: 'rgba(255,255,255,0.03)',
-        borderRadius: '12px',
-        padding: '16px',
-        marginBottom: '20px',
-    },
-    alibabaInfoRow: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '4px',
-        marginBottom: '12px',
-    },
-    alibabaLabel: {
-        fontSize: '10px',
-        color: 'rgba(255,255,255,0.4)',
-        textTransform: 'uppercase' as const,
-        letterSpacing: '1px',
-    },
-    alibabaStatusText: {
-        fontSize: '14px',
-        fontWeight: '700',
-        color: 'var(--primary)',
-    },
-    alibabaValueBold: {
-        fontSize: '18px',
-        fontWeight: '800',
-        color: 'white',
-    },
-    alibabaValue: {
-        fontSize: '13px',
-        color: 'white',
-        fontWeight: '500',
-    },
-    alibabaNotesBox: {
-        background: 'rgba(255,255,255,0.02)',
-        border: '1px dashed rgba(255,255,255,0.1)',
-        borderRadius: '12px',
-        padding: '12px',
-        marginBottom: '20px',
-    },
-    alibabaNotesContent: {
-        fontSize: '13px',
-        color: 'rgba(255,255,255,0.8)',
-        marginTop: '6px',
-        lineHeight: '1.4',
-    },
-    dealActions: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '10px',
-        marginBottom: '12px',
-    },
-    alibabaPayButton: {
-        width: '100%',
-        background: 'var(--primary)',
-        color: 'white',
-        border: 'none',
-        borderRadius: '15px',
-        padding: '14px',
-        fontSize: '15px',
-        fontWeight: '700',
-        cursor: 'pointer',
-        boxShadow: '0 4px 15px rgba(138, 43, 226, 0.4)',
-    },
-    editDealBtn: {
-        width: '100%',
-        background: 'transparent',
-        color: 'white',
-        border: '1px solid rgba(255,255,255,0.2)',
-        borderRadius: '15px',
-        padding: '10px',
-        fontSize: '13px',
-        fontWeight: '600',
-        cursor: 'pointer',
-    },
-    alibabaExpiredBox: {
-        width: '100%',
-        background: 'rgba(255,255,255,0.05)',
-        color: 'rgba(255,255,255,0.4)',
-        textAlign: 'center' as const,
-        padding: '12px',
-        borderRadius: '15px',
-        fontSize: '13px',
-        fontWeight: '600',
-        marginBottom: '12px',
-    },
-    alibabaExpiryHint: {
-        fontSize: '10px',
-        color: 'rgba(255,255,255,0.3)',
-        textAlign: 'center' as const,
-    },
-    expiryBadge: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        background: 'rgba(255,255,255,0.1)',
-        padding: '4px 8px',
-        borderRadius: '10px',
-        fontSize: '10px',
-        fontWeight: '700',
-        color: 'rgba(255,255,255,0.6)',
+        background: '#0A0A0A',
     }
 };
 

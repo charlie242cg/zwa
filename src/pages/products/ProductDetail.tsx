@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, Share2, Heart, TrendingUp } from 'lucide-react';
-import { productService, Product } from '../../services/productService';
-import { affiliateService } from '../../services/affiliateService';
+import { useAuth } from '../../hooks/useAuth';
 import { chatService } from '../../services/chatService';
 import { orderService } from '../../services/orderService';
 import { paymentService } from '../../services/paymentService';
-import { useAuth } from '../../hooks/useAuth';
-import { reviewService, Review } from '../../services/reviewService';
+import { affiliateService } from '../../services/affiliateService';
 import ReviewCarousel from '../../components/reviews/ReviewCarousel';
 import ReviewsModal from '../../components/reviews/ReviewsModal';
 import StarRating from '../../components/reviews/StarRating';
+import CheckoutModal from '../../components/orders/CheckoutModal';
+import { useProductDetail } from '../../hooks/useProductDetail';
 
 // Modern Skeleton Component
 const ProductDetailSkeleton = () => {
@@ -44,21 +44,27 @@ const ProductDetail = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { user, profile } = useAuth();
-    const [product, setProduct] = useState<Product | null>(null);
-    const [loading, setLoading] = useState(true);
+
+    // Use the optimized hook
+    const {
+        product,
+        isLoading: loading,
+        similarProducts,
+        isLoadingSimilar,
+        reviews,
+        totalReviews,
+        isLoadingReviews
+    } = useProductDetail(id);
+
     const [activeImageIndex, setActiveImageIndex] = useState(0);
     const [negotiating, setNegotiating] = useState(false);
     const [isFavorite, setIsFavorite] = useState(false);
-    const [reviews, setReviews] = useState<Review[]>([]);
-    const [reviewsLoading, setReviewsLoading] = useState(true);
-    const [totalReviews, setTotalReviews] = useState(0);
     const [showReviewsModal, setShowReviewsModal] = useState(false);
     const [quantity, setQuantity] = useState(1);
-    const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
-    const [allSimilarProducts, setAllSimilarProducts] = useState<Product[]>([]);
-    const [loadingSimilar, setLoadingSimilar] = useState(false);
-    const [displayCount, setDisplayCount] = useState(8);
     const [isPaymentLoading, setIsPaymentLoading] = useState(false);
+    const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+    const [touchStart, setTouchStart] = useState<number | null>(null);
+    const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
     // Add skeleton animation CSS
     useEffect(() => {
@@ -75,23 +81,43 @@ const ProductDetail = () => {
 
     useEffect(() => {
         if (id) {
-            fetchProduct(id);
-            // Reset display count when product changes
-            setDisplayCount(8);
-            setSimilarProducts([]);
-            setAllSimilarProducts([]);
+            setActiveImageIndex(0);
         }
-        // Check if favorite (mock for now as there is no favorites table yet in Supabase)
         const favs = JSON.parse(localStorage.getItem('zwa_favorites') || '[]');
-        setIsFavorite(favs.includes(id));
+        if (id) setIsFavorite(favs.includes(id));
     }, [id]);
 
-    // Initialize quantity with min_order_quantity when product loads
     useEffect(() => {
-        if (product) {
+        if (product && quantity < product.min_order_quantity) {
             setQuantity(product.min_order_quantity);
         }
     }, [product]);
+
+    // Swipe handling for image carousel
+    const minSwipeDistance = 50;
+
+    const onTouchStart = (e: React.TouchEvent) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const onTouchMove = (e: React.TouchEvent) => {
+        setTouchEnd(e.targetTouches[0].clientX);
+    };
+
+    const onTouchEnd = () => {
+        if (!touchStart || !touchEnd || !product?.images_url) return;
+        const distance = touchStart - touchEnd;
+        const isLeftSwipe = distance > minSwipeDistance;
+        const isRightSwipe = distance < -minSwipeDistance;
+
+        if (isLeftSwipe && activeImageIndex < product.images_url.length - 1) {
+            setActiveImageIndex(activeImageIndex + 1);
+        }
+        if (isRightSwipe && activeImageIndex > 0) {
+            setActiveImageIndex(activeImageIndex - 1);
+        }
+    };
 
     const handleShare = async () => {
         if (!product) return;
@@ -100,7 +126,6 @@ const ProductDetail = () => {
             ? `${window.location.origin}/product/${product.id}?ref=${user.id}`
             : window.location.href;
 
-        // If affiliate, register this link in their active links
         if (isAffiliate && user) {
             try {
                 await affiliateService.registerPromotion(user.id, product.id);
@@ -138,63 +163,6 @@ const ProductDetail = () => {
         }
         localStorage.setItem('zwa_favorites', JSON.stringify(newFavs));
         setIsFavorite(!isFavorite);
-    };
-
-    const fetchProduct = async (productId: string) => {
-        setLoading(true);
-        const { data, error } = await productService.getProductById(productId);
-        if (!error && data) {
-            console.log('🔍 Product loaded:', data);
-            console.log('👤 Seller info:', data.profiles);
-            console.log('✅ is_verified_seller:', data.profiles?.is_verified_seller);
-            setProduct(data);
-            // Fetch similar products after product loads
-            fetchSimilarProducts(data.category || '', productId);
-        }
-        setLoading(false);
-
-        // Fetch reviews for this product (only first 3 for carousel)
-        setReviewsLoading(true);
-        const { data: reviewsData } = await reviewService.getProductReviews(productId, 3);
-        const { count } = await reviewService.getProductReviewCount(productId);
-        if (reviewsData) {
-            setReviews(reviewsData);
-        }
-        setTotalReviews(count || 0);
-        setReviewsLoading(false);
-    };
-
-    const fetchSimilarProducts = async (category: string, currentProductId: string) => {
-        setLoadingSimilar(true);
-        const { data } = await productService.getProducts();
-        if (data) {
-            // Filter by same category first, then fallback to other products
-            let filtered = data.filter(p =>
-                p.id !== currentProductId &&
-                p.status === 'active' &&
-                p.category === category
-            );
-
-            // If less than 20 products in same category, add other products
-            if (filtered.length < 20) {
-                const others = data.filter(p =>
-                    p.id !== currentProductId &&
-                    p.status === 'active' &&
-                    p.category !== category
-                );
-                filtered = [...filtered, ...others];
-            }
-
-            setAllSimilarProducts(filtered);
-            setSimilarProducts(filtered.slice(0, displayCount));
-        }
-        setLoadingSimilar(false);
-    };
-
-    const loadMoreProducts = () => {
-        const newCount = displayCount + 8;
-        setDisplayCount(newCount);
-        setSimilarProducts(allSimilarProducts.slice(0, newCount));
     };
 
     const startNegotiation = async () => {
@@ -239,8 +207,26 @@ const ProductDetail = () => {
             return;
         }
 
+        // Check stock availability (null = unlimited, >=0 = tracked)
+        if (product.stock_quantity !== null && product.stock_quantity !== undefined) {
+            if (product.stock_quantity === 0) {
+                alert("Désolé, ce produit est en rupture de stock.");
+                return;
+            }
+            if (quantity > product.stock_quantity) {
+                alert(`Stock insuffisant. Seulement ${product.stock_quantity} unité(s) disponible(s).`);
+                return;
+            }
+        }
+
+        setIsCheckoutModalOpen(true);
+    };
+
+    const handleConfirmCheckout = async (checkoutData: { phone: string; location: string }) => {
+        if (!product || !user) return;
+        setIsCheckoutModalOpen(false);
         setIsPaymentLoading(true);
-        console.log('[ProductDetail] 💳 Direct purchase initiated for product:', product.id);
+        console.log('[ProductDetail] 💳 Processing checkout with data:', checkoutData);
 
         try {
             const affiliateId = sessionStorage.getItem('zwa_affiliate_id');
@@ -255,6 +241,8 @@ const ProductDetail = () => {
                 affiliateId: affiliateId || undefined,
                 amount,
                 quantity,
+                buyerPhone: checkoutData.phone,
+                deliveryLocation: checkoutData.location,
                 notes: 'Achat direct depuis la fiche produit'
             });
 
@@ -309,11 +297,22 @@ const ProductDetail = () => {
             </div>
 
             {/* Image Section / Gallery */}
-            <div style={styles.imageSection}>
+            <div
+                style={styles.imageSection}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+            >
                 <img
-                    src={product.images_url?.[activeImageIndex] || product.image_url}
+                    src={(() => {
+                        const url = product.images_url?.[activeImageIndex] || product.image_url;
+                        return url.includes('supabase.co/storage')
+                            ? `${url}?width=800&quality=80`
+                            : url;
+                    })()}
                     alt={product.name}
                     style={styles.mainImage}
+                    draggable={false}
                 />
 
                 {/* Image Dots/Thumbnails */}
@@ -334,7 +333,7 @@ const ProductDetail = () => {
 
                 <div style={styles.badgesContainer}>
                     {product.profiles?.is_verified_seller && (
-                        <div style={styles.verifiedBadge}>
+                        <div style={styles.imageBadge}>
                             <ShieldCheck size={14} />
                             <span>Vendeur Vérifié</span>
                         </div>
@@ -428,7 +427,7 @@ const ProductDetail = () => {
                             </div>
                         </div>
 
-                        {reviewsLoading ? (
+                        {isLoadingReviews ? (
                             <div style={styles.reviewsSkeleton}>
                                 {[1, 2].map(i => (
                                     <div key={i} style={styles.reviewSkeletonCard}>
@@ -505,31 +504,80 @@ const ProductDetail = () => {
                                 <div style={styles.quantitySection}>
                                     <div style={styles.quantityHeader}>
                                         <div style={styles.quantityLabel}>Quantité</div>
-                                        <div style={styles.minOrderBadge}>Min: {product.min_order_quantity}</div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <div style={styles.minOrderBadge}>Min: {product.min_order_quantity}</div>
+                                            {product.stock_quantity !== null && product.stock_quantity !== undefined && (
+                                                <div style={{
+                                                    ...styles.minOrderBadge,
+                                                    background: product.stock_quantity === 0
+                                                        ? 'rgba(255, 59, 48, 0.15)'
+                                                        : product.stock_quantity <= product.min_order_quantity * 2
+                                                            ? 'rgba(255, 149, 0, 0.15)'
+                                                            : 'rgba(0, 204, 102, 0.15)',
+                                                    color: product.stock_quantity === 0
+                                                        ? '#FF3B30'
+                                                        : product.stock_quantity <= product.min_order_quantity * 2
+                                                            ? '#FF9500'
+                                                            : '#00CC66',
+                                                }}>
+                                                    {product.stock_quantity === 0 ? '🚫 Rupture de stock' : `📦 Stock: ${product.stock_quantity}`}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div style={styles.quantitySelector}>
                                         <button
                                             style={{
                                                 ...styles.quantityButton,
-                                                opacity: quantity <= product.min_order_quantity ? 0.5 : 1,
-                                                cursor: quantity <= product.min_order_quantity ? 'not-allowed' : 'pointer'
+                                                opacity: (quantity <= product.min_order_quantity || product.stock_quantity === 0) ? 0.5 : 1,
+                                                cursor: (quantity <= product.min_order_quantity || product.stock_quantity === 0) ? 'not-allowed' : 'pointer'
                                             }}
                                             onClick={() => setQuantity(Math.max(product.min_order_quantity, quantity - 1))}
-                                            disabled={quantity <= product.min_order_quantity}
+                                            disabled={quantity <= product.min_order_quantity || product.stock_quantity === 0}
                                         >
                                             −
                                         </button>
                                         <div style={styles.quantityValueContainer}>
-                                            <div style={styles.quantityValue}>{quantity}</div>
+                                            <input
+                                                type="number"
+                                                inputMode="numeric"
+                                                value={quantity}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || product.min_order_quantity;
+                                                    const maxQty = product.stock_quantity > 0 ? product.stock_quantity : Infinity;
+                                                    setQuantity(Math.min(maxQty, Math.max(product.min_order_quantity, val)));
+                                                }}
+                                                onBlur={() => {
+                                                    // Ensure min/max quantity on blur
+                                                    if (quantity < product.min_order_quantity) {
+                                                        setQuantity(product.min_order_quantity);
+                                                    }
+                                                    if (product.stock_quantity > 0 && quantity > product.stock_quantity) {
+                                                        setQuantity(product.stock_quantity);
+                                                    }
+                                                }}
+                                                min={product.min_order_quantity}
+                                                style={styles.quantityInput}
+                                                disabled={product.stock_quantity === 0}
+                                            />
                                             <div style={styles.quantityUnit}>pcs</div>
                                         </div>
                                         <button
-                                            style={styles.quantityButton}
-                                            onClick={() => setQuantity(quantity + 1)}
+                                            style={{
+                                                ...styles.quantityButton,
+                                                opacity: (product.stock_quantity !== null && product.stock_quantity !== undefined && quantity >= product.stock_quantity) ? 0.5 : 1,
+                                                cursor: (product.stock_quantity !== null && product.stock_quantity !== undefined && quantity >= product.stock_quantity) ? 'not-allowed' : 'pointer'
+                                            }}
+                                            onClick={() => {
+                                                const maxQty = product.stock_quantity !== null && product.stock_quantity !== undefined ? product.stock_quantity : Infinity;
+                                                if (quantity < maxQty) setQuantity(quantity + 1);
+                                            }}
+                                            disabled={product.stock_quantity !== null && product.stock_quantity !== undefined && quantity >= product.stock_quantity}
                                         >
                                             +
                                         </button>
                                     </div>
+                                    <p style={styles.quantityHint}>Cliquez sur le chiffre pour saisir une quantité</p>
                                     <div style={styles.priceBreakdown}>
                                         <div style={styles.totalPriceRow}>
                                             <span style={styles.priceLabel}>{quantity} × {product.price.toLocaleString()} FCFA</span>
@@ -543,11 +591,11 @@ const ProductDetail = () => {
                                 <button
                                     style={{
                                         ...styles.buyNowButton,
-                                        opacity: isPaymentLoading ? 0.7 : 1,
-                                        cursor: isPaymentLoading ? 'wait' : 'pointer'
+                                        opacity: (isPaymentLoading || product.stock_quantity === 0) ? 0.7 : 1,
+                                        cursor: (isPaymentLoading || product.stock_quantity === 0) ? 'not-allowed' : 'pointer'
                                     }}
                                     onClick={handleBuyNow}
-                                    disabled={isPaymentLoading}
+                                    disabled={isPaymentLoading || product.stock_quantity === 0}
                                 >
                                     {isPaymentLoading ? (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -558,11 +606,15 @@ const ProductDetail = () => {
                                     )}
                                 </button>
                                 <button
-                                    style={styles.negotiateButton}
+                                    style={{
+                                        ...styles.negotiateButton,
+                                        opacity: product.stock_quantity === 0 ? 0.7 : 1,
+                                        cursor: product.stock_quantity === 0 ? 'not-allowed' : 'pointer'
+                                    }}
                                     onClick={startNegotiation}
-                                    disabled={negotiating}
+                                    disabled={negotiating || product.stock_quantity === 0}
                                 >
-                                    {negotiating ? 'Ouverture...' : '💬 Négocier le Prix'}
+                                    {negotiating ? 'Ouverture...' : product.stock_quantity === 0 ? 'Rupture de stock' : '💬 Négocier le Prix'}
                                 </button>
                             </>
                         )}
@@ -578,7 +630,7 @@ const ProductDetail = () => {
                         </h3>
                     </div>
 
-                    {loadingSimilar ? (
+                    {isLoadingSimilar ? (
                         <div style={styles.similarGrid}>
                             {[1, 2, 3, 4].map(i => (
                                 <div key={i} style={styles.productCardSkeleton}>
@@ -620,17 +672,16 @@ const ProductDetail = () => {
                             ))}
                         </div>
                     )}
-
-                    {/* Load More Button */}
-                    {!loadingSimilar && similarProducts.length < allSimilarProducts.length && (
-                        <button
-                            style={styles.loadMoreButton}
-                            onClick={loadMoreProducts}
-                        >
-                            Voir plus de produits
-                        </button>
-                    )}
                 </div>
+
+                {/* Checkout Modal */}
+                <CheckoutModal
+                    isOpen={isCheckoutModalOpen}
+                    onClose={() => setIsCheckoutModalOpen(false)}
+                    onConfirm={handleConfirmCheckout}
+                    productName={product.name}
+                    totalAmount={product.price * quantity}
+                />
             </div>
         </div>
     );
@@ -698,6 +749,18 @@ const styles = {
         fontWeight: 'bold',
         boxShadow: '0 4px 15px rgba(138, 43, 226, 0.4)',
     },
+    imageBadge: {
+        background: '#00CC66',
+        color: 'white',
+        padding: '6px 12px',
+        borderRadius: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        fontSize: '11px',
+        fontWeight: 'bold',
+        boxShadow: '0 4px 15px rgba(0, 204, 102, 0.4)',
+    },
     badgesContainer: {
         position: 'absolute' as const,
         bottom: '16px',
@@ -705,6 +768,7 @@ const styles = {
         display: 'flex',
         flexDirection: 'column' as const,
         gap: '8px',
+        zIndex: 5,
     },
     galleryDots: {
         position: 'absolute' as const,
@@ -958,14 +1022,22 @@ const styles = {
         alignItems: 'center',
         gap: '2px',
     },
-    quantityValue: {
+    quantityInput: {
+        width: '100px',
         fontSize: '32px',
         fontWeight: '800',
-        color: 'white',
+        color: 'var(--primary)',
         lineHeight: '1',
-        background: 'linear-gradient(135deg, #8A2BE2, #FF1493)',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: '2px solid transparent',
+        textAlign: 'center' as const,
+        outline: 'none',
+        padding: '4px 0',
+        transition: 'all 0.2s ease',
+        // Remove spin buttons
+        MozAppearance: 'textfield' as const,
+        WebkitAppearance: 'none' as const,
     },
     quantityUnit: {
         fontSize: '11px',
@@ -973,6 +1045,13 @@ const styles = {
         color: 'var(--text-secondary)',
         textTransform: 'uppercase' as const,
         letterSpacing: '1px',
+    },
+    quantityHint: {
+        fontSize: '11px',
+        color: 'var(--text-secondary)',
+        textAlign: 'center' as const,
+        marginTop: '4px',
+        opacity: 0.7,
     },
     priceBreakdown: {
         display: 'flex',
@@ -1205,6 +1284,5 @@ const styles = {
         transition: 'all 0.3s',
     }
 };
-
 
 export default ProductDetail;

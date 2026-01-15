@@ -103,23 +103,21 @@ serve(async (req) => {
                 return new Response(JSON.stringify({ received: true, already_processed: true }), { status: 200 })
             }
 
-            // 4. Mise à jour de la commande
-            const { error: updateError } = await supabaseAdmin
-                .from('orders')
-                .update({
-                    status: 'paid',
-                    yabetoo_status: status,
-                    // On en profite pour enregistrer le PI ID si on n'avait que le Session ID
-                    yabetoo_intent_id: intentId || targetOrder.yabetoo_intent_id
-                })
-                .eq('id', targetOrder.id)
+            // 4. Action atomique : Décrémentation du stock ET mise à jour du statut
+            console.log(`[Webhook] ⚡ Confirmation atomique pour commande ${targetOrder.id}`);
+            const { data: confirmResult, error: confirmError } = await supabaseAdmin
+                .rpc('confirm_order_payment', {
+                    p_order_id: targetOrder.id,
+                    p_yabetoo_status: status,
+                    p_yabetoo_intent_id: intentId
+                });
 
-            if (updateError) {
-                console.error('[Webhook] ❌ Erreur Update DB :', updateError);
-                throw updateError;
+            if (confirmError) {
+                console.error('[Webhook] ❌ Erreur lors de la confirmation atomique :', confirmError);
+                throw confirmError;
             }
 
-            console.log('[Webhook] ✅ Commande validée avec succès :', targetOrder.id)
+            console.log('[Webhook] ✅ Résultat confirmation :', confirmResult);
         }
 
         return new Response(JSON.stringify({ received: true }), { status: 200 })

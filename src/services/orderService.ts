@@ -12,6 +12,8 @@ export interface Order {
     quantity: number;
     status: OrderStatus;
     created_at: string;
+    expires_at?: string;
+    shipping_timeline?: string;
 }
 
 export interface CreateOrderParams {
@@ -22,16 +24,43 @@ export interface CreateOrderParams {
     amount: number;
     quantity: number;
     notes?: string;
+    buyerPhone?: string;
+    deliveryLocation?: string;
+    expiresAt?: string;
+    shippingTimeline?: string;
 }
 
 export const orderService = {
     async createOrder(params: CreateOrderParams) {
-        // 1. Fetch product to get commission rate
-        const { data: product } = await supabase
+        // 1. Fetch product to get commission rate and stock
+        const { data: product, error: productError } = await supabase
             .from('products')
-            .select('default_commission')
+            .select('default_commission, stock_quantity')
             .eq('id', params.productId)
             .single();
+
+        console.log('[OrderService] 📦 Product stock check:', {
+            productId: params.productId,
+            stock_quantity: product?.stock_quantity,
+            requested_quantity: params.quantity,
+            productError
+        });
+
+        // 2. Check stock availability (null = unlimited, >=0 = tracked)
+        const stockQty = product?.stock_quantity;
+        if (stockQty !== null && stockQty !== undefined) {
+            if (params.quantity > stockQty) {
+                console.log('[OrderService] ❌ Stock insufficient!');
+                return {
+                    data: null,
+                    error: {
+                        message: stockQty === 0
+                            ? "Produit en rupture de stock."
+                            : `Stock insuffisant. Seulement ${stockQty} unité(s) disponible(s).`
+                    }
+                };
+            }
+        }
 
         const commissionRate = product?.default_commission || 0;
         const commissionAmount = (Number(params.amount) * Number(commissionRate)) / 100;
@@ -47,6 +76,10 @@ export const orderService = {
                 quantity: params.quantity,
                 commission_amount: commissionAmount,
                 notes: params.notes,
+                buyer_phone: params.buyerPhone,
+                delivery_location: params.deliveryLocation,
+                expires_at: params.expiresAt,
+                shipping_timeline: params.shippingTimeline || '7 jours',
                 status: 'pending'
             }])
             .select()
@@ -62,7 +95,7 @@ export const orderService = {
         // Join seller profile to get store_name
         const { data, error } = await supabase
             .from('orders')
-            .select('*, products(name, image_url), profiles!orders_seller_id_fkey(full_name, store_name, avatar_url)')
+            .select('*, products(name, image_url), seller:profiles!orders_seller_id_fkey(full_name, store_name, avatar_url)')
             .eq('buyer_id', buyerId)
             .in('status', ['pending', 'paid', 'shipped', 'delivered', 'cancelled'])
             .order('created_at', { ascending: false });
@@ -78,13 +111,112 @@ export const orderService = {
         // Join buyer profile to get full_name
         const { data, error } = await supabase
             .from('orders')
-            .select('*, products(name, image_url), profiles!orders_buyer_id_fkey(full_name, avatar_url)')
+            .select('*, products(name, image_url), buyer:profiles!orders_buyer_id_fkey(full_name, avatar_url)')
             .eq('seller_id', sellerId)
             .in('status', ['pending', 'paid', 'shipped', 'delivered', 'cancelled'])
             .order('created_at', { ascending: false });
 
         console.log('[OrderService] 📦 Seller orders fetched:', { count: data?.length, error });
         return { data, error };
+    },
+
+    async getPaginatedOrders({
+        userId,
+        role,
+        status,
+        search,
+        page = 0,
+        limit = 10
+    }: {
+        userId: string,
+        role: 'buyer' | 'seller' | 'affiliate',
+        status?: string,
+        search?: string,
+        page?: number,
+        limit?: number
+    }) {
+        const from = page * limit;
+        const to = from + limit - 1;
+
+        console.log(`[OrderService] 📑 Fetching paginated orders for ${role} ${userId}`, { status, search, page });
+
+        let query = supabase
+            .from('orders')
+            .select(`
+                *,
+                products(name, image_url),
+                buyer:profiles!orders_buyer_id_fkey(full_name, avatar_url),
+                seller:profiles!orders_seller_id_fkey(full_name, store_name, avatar_url),
+                reviews(id)
+            `, { count: 'exact' });
+
+        // Filter by role
+        if (role === 'seller') {
+            query = query.eq('seller_id', userId);
+        } else if (role === 'affiliate') {
+            query = query.eq('affiliate_id', userId);
+        } else {
+            query = query.eq('buyer_id', userId);
+        }
+
+        // Filter by status
+        if (status && status !== 'all') {
+            query = query.eq('status', status);
+        } else if (role === 'affiliate') {
+            // Affiliates don't see cancelled orders by default
+            query = query.in('status', ['pending', 'paid', 'shipped', 'delivered']);
+        }
+
+        // Search (if provided) - This is tricky in Supabase for joined tables, 
+        // but we can at least filter by order ID or product name if we use a flat structure or specific queries.
+        // For now, let's focus on the basics and add search if possible.
+        if (search) {
+            query = query.or(`id.ilike.%${search}%, notes.ilike.%${search}%`);
+        }
+
+        const { data, error, count } = await query
+            .order('created_at', { ascending: false })
+            .range(from, to);
+
+        return { data, error, count };
+    },
+
+    async getOrderCounts(userId: string, role: string) {
+        let query = supabase
+            .from('orders')
+            .select('status, amount', { count: 'exact' });
+
+        if (role === 'seller') {
+            query = query.eq('seller_id', userId);
+        } else if (role === 'affiliate') {
+            query = query.eq('affiliate_id', userId);
+        } else {
+            query = query.eq('buyer_id', userId);
+        }
+
+        const { data, error } = await query;
+        if (error) return { data: null, error };
+
+        const counts = {
+            all: data.length,
+            pending: 0,
+            paid: 0,
+            shipped: 0,
+            delivered: 0,
+            cancelled: 0,
+            totalRevenue: 0
+        };
+
+        data.forEach(order => {
+            if (counts[order.status as keyof typeof counts] !== undefined) {
+                (counts[order.status as keyof typeof counts] as number)++;
+            }
+            if (order.status === 'delivered' || order.status === 'paid' || order.status === 'shipped') {
+                counts.totalRevenue += Number(order.amount);
+            }
+        });
+
+        return { data: counts, error: null };
     },
 
     async getOrdersByAffiliate(affiliateId: string) {
@@ -108,7 +240,7 @@ export const orderService = {
         return { data, error };
     },
 
-    async updateOrder(id: string, params: { amount: number; quantity: number; notes?: string }) {
+    async updateOrder(id: string, params: { amount: number; quantity: number; notes?: string; expiresAt?: string; shippingTimeline?: string }) {
         // Fetch current order to get product_id
         const { data: order } = await supabase
             .from('orders')
@@ -134,7 +266,9 @@ export const orderService = {
                 amount: params.amount,
                 quantity: params.quantity,
                 commission_amount: commissionAmount,
-                notes: params.notes
+                notes: params.notes,
+                expires_at: params.expiresAt,
+                shipping_timeline: params.shippingTimeline
             })
             .eq('id', id)
             .select()
@@ -144,16 +278,15 @@ export const orderService = {
     },
 
     async shipOrder(orderId: string) {
-        // Generate a random 4-digit OTP
-        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        // Generate a random 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-        // In a real app, we would hash this. For the MVP, we'll store it directly
-        // but label it as hash to maintain schema consistency if needed later.
         const { data, error } = await supabase
             .from('orders')
             .update({
                 status: 'shipped',
-                delivery_otp_hash: otp // Storing plain for MVP simplicity, as requested in PRD logic
+                delivery_otp_hash: otp,
+                shipped_at: new Date().toISOString()
             })
             .eq('id', orderId)
             .select()
@@ -177,8 +310,8 @@ export const orderService = {
             return { error: fetchError || new Error('Order not found') };
         }
 
-        if (order.delivery_otp_hash !== otp) {
-            console.error('[OrderService] ❌ Invalid OTP');
+        if (order.delivery_otp_hash !== otp.trim()) {
+            console.error('[OrderService] ❌ Invalid OTP. Expected:', order.delivery_otp_hash, 'Got:', otp.trim());
             return { error: new Error('Code OTP invalide') };
         }
 
@@ -355,37 +488,28 @@ export const orderService = {
             id: existingOrder.id,
             status: existingOrder.status,
             buyer_id: existingOrder.buyer_id,
-            seller_id: existingOrder.seller_id
+            seller_id: existingOrder.seller_id,
+            product_id: existingOrder.product_id,
+            quantity: existingOrder.quantity
         });
 
-        // Simulate payment by updating status from 'pending' to 'paid'
-        const { data, error } = await supabase
-            .from('orders')
-            .update({ status: 'paid' })
-            .eq('id', orderId)
-            .select('*, products(name, image_url)');
+        // Use the atomic confirmation RPC
+        console.log('[OrderService] ⚡ Calling confirm_order_payment RPC...');
+        const { data: confirmResult, error: confirmError } = await supabase
+            .rpc('confirm_order_payment', {
+                p_order_id: orderId,
+                p_yabetoo_status: 'succeeded'
+            });
 
-        if (error) {
-            console.error('[OrderService] ❌ Payment update failed:', error);
-            return { data: null, error };
+        console.log('[OrderService] 📦 Atomic RPC result:', { confirmResult, confirmError });
+
+        if (confirmError) {
+            console.error('[OrderService] ❌ Atomic confirmation failed:', confirmError);
+            return { data: null, error: confirmError };
         }
 
-        console.log('[OrderService] ✅ Payment simulated successfully. Updated rows:', data?.length, 'Data:', data);
-
-        if (!data || data.length === 0) {
-            console.error('[OrderService] ⚠️ Update succeeded but returned no data. This might be an RLS issue.');
-            // Try to fetch the order again
-            const { data: refetchedOrder } = await supabase
-                .from('orders')
-                .select('*, products(name, image_url)')
-                .eq('id', orderId)
-                .single();
-
-            console.log('[OrderService] 🔄 Refetched order:', refetchedOrder);
-            return { data: refetchedOrder, error: null };
-        }
-
-        return { data: data[0], error: null };
+        // Return the order from the RPC result
+        return { data: confirmResult.order, error: null };
     },
 
     async simulateFullSale(orderId: string) {
@@ -409,9 +533,9 @@ export const orderService = {
         }
         console.log('[OrderService] ✅ Order shipped with OTP:', otp);
 
-        // 3. Confirm delivery (shipped → delivered, triggers vente count)
+        // 3. Confirm delivery (shipped → delivered)
         console.log('[OrderService] ✅ Step 3/3: Confirming delivery...');
-        const { error: deliveryError } = await this.confirmDeliveryByBuyer(orderId, otp);
+        const { error: deliveryError } = await this.deliverOrder(orderId, otp);
         if (deliveryError) {
             console.error('[OrderService] ❌ Delivery confirmation failed:', deliveryError);
             return { error: deliveryError };
@@ -430,188 +554,29 @@ export const orderService = {
         };
     },
 
-    async confirmDeliveryByBuyer(orderId: string, otp: string) {
-        console.log('[OrderService] 📦 Buyer confirming delivery for order:', orderId, 'with OTP:', otp);
 
-        // Buyer confirms delivery with OTP code
-        const { data: order, error: fetchError } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('id', orderId)
-            .single();
-
-        if (fetchError || !order) {
-            console.error('[OrderService] ❌ Order not found:', fetchError);
-            return { error: fetchError || new Error('Commande introuvable') };
-        }
-
-        console.log('[OrderService] 🔍 Order found. Verifying OTP...', {
-            expected: order.delivery_otp_hash,
-            provided: otp
-        });
-
-        if (order.delivery_otp_hash !== otp) {
-            console.error('[OrderService] ❌ Invalid OTP');
-            return { error: new Error('Code OTP invalide') };
-        }
-
-        console.log('[OrderService] ✅ OTP verified. Updating order to delivered...');
-
-        // Update order status to delivered
-        const { data, error } = await supabase
-            .from('orders')
-            .update({ status: 'delivered' })
-            .eq('id', orderId)
-            .select('*, products(name, image_url)');
-
-        if (error) {
-            console.error('[OrderService] ❌ Failed to update order:', error);
-            return { error };
-        }
-
-        console.log('[OrderService] 💰 Updating wallet balances...');
-
-        // Update seller and affiliate wallet balances
-        const { data: sellerProfile, error: sellerErr } = await supabase
-            .from('profiles')
-            .select('wallet_balance')
-            .eq('id', order.seller_id)
-            .single();
-
-        if (sellerErr) {
-            console.error('[OrderService] ❌ Failed to fetch seller profile:', sellerErr);
-            return { error: sellerErr };
-        }
-
-        const commission = Number(order.commission_amount || 0);
-        const netAmount = Number(order.amount) - commission;
-        const newSellerBalance = Number(sellerProfile.wallet_balance) + netAmount;
-
-        console.log('[OrderService] 💸 Seller payout:', {
-            amount: order.amount,
-            commission,
-            netAmount,
-            newBalance: newSellerBalance
-        });
-
-        // Update seller
-        const { error: walletError } = await supabase
-            .from('profiles')
-            .update({ wallet_balance: newSellerBalance })
-            .eq('id', order.seller_id);
-
-        if (walletError) {
-            console.error('[OrderService] ❌ Failed to update seller wallet:', walletError);
-            return { error: walletError };
-        }
-
-        // Update affiliate if present
-        if (order.affiliate_id && commission > 0) {
-            console.log('[OrderService] 🎁 Affiliate detected. Updating commission...', {
-                affiliateId: order.affiliate_id,
-                commission
-            });
-
-            const { data: affiliateProfile } = await supabase
-                .from('profiles')
-                .select('wallet_balance')
-                .eq('id', order.affiliate_id)
-                .single();
-
-            if (affiliateProfile) {
-                const newAffiliateBalance = Number(affiliateProfile.wallet_balance) + commission;
-                await supabase
-                    .from('profiles')
-                    .update({ wallet_balance: newAffiliateBalance })
-                    .eq('id', order.affiliate_id);
-
-                console.log('[OrderService] ✅ Affiliate commission paid:', {
-                    newBalance: newAffiliateBalance
-                });
-            }
-        }
-
-        console.log('[OrderService] ✅ Delivery confirmed successfully!');
-
-        // 🆕 Create transactions for all parties involved
-        console.log('[OrderService] 📝 Creating transactions...');
-
-        // Fetch product details for transactions
-        const { data: product } = await supabase
-            .from('products')
-            .select('name, image_url, default_commission')
-            .eq('id', order.product_id)
-            .single();
-
-        const productName = product?.name || 'Produit';
-        const productImage = product?.image_url || '';
-        const quantity = order.quantity || 1;
-        const unitPrice = Number(order.amount) / quantity;
-
-        // 1. Create PURCHASE transaction for buyer
-        const { data: buyerProfile } = await supabase
-            .from('profiles')
-            .select('wallet_balance')
-            .eq('id', order.buyer_id)
-            .single();
-
-        if (buyerProfile) {
-            await transactionService.createPurchaseTransaction({
-                userId: order.buyer_id,
-                orderId: order.id,
-                amount: Number(order.amount),
-                balanceAfter: Number(buyerProfile.wallet_balance),
-                productName,
-                productImage,
-                quantity,
-                unitPrice
-            });
-            console.log('[OrderService] ✅ Purchase transaction created for buyer');
-        }
-
-        // 2. Create SALE transaction for seller
-        await transactionService.createSaleTransaction({
-            sellerId: order.seller_id,
-            orderId: order.id,
-            amount: netAmount,
-            balanceAfter: newSellerBalance,
-            productName,
-            productImage,
-            quantity,
-            unitPrice,
-            commissionAmount: commission > 0 ? commission : undefined
-        });
-        console.log('[OrderService] ✅ Sale transaction created for seller');
-
-        // 3. Create COMMISSION transaction for affiliate (if applicable)
-        if (order.affiliate_id && commission > 0) {
-            const { data: affiliateProfile } = await supabase
-                .from('profiles')
-                .select('wallet_balance')
-                .eq('id', order.affiliate_id)
-                .single();
-
-            if (affiliateProfile) {
-                const commissionRate = product?.default_commission || 0;
-                await transactionService.createCommissionTransaction({
-                    affiliateId: order.affiliate_id,
-                    orderId: order.id,
-                    amount: commission,
-                    balanceAfter: Number(affiliateProfile.wallet_balance),
-                    productName,
-                    commissionRate,
-                    totalSale: Number(order.amount)
-                });
-                console.log('[OrderService] ✅ Commission transaction created for affiliate');
-            }
-        }
-
-        console.log('[OrderService] ✅ All transactions created successfully!');
-        return { data: data?.[0] || null, error: null };
-    },
 
     async updateOrderStatus(orderId: string, status: OrderStatus) {
         console.log(`[OrderService] 🔄 Mise à jour statut commande ${orderId} vers ${status}`);
+
+        // If transitioning to 'paid', use atomic RPC to ensure stock decrement
+        if (status === 'paid') {
+            console.log(`[OrderService] ⚡ Appel atomique confirm_order_payment pour ${orderId}`);
+            const { data: confirmResult, error: confirmError } = await supabase
+                .rpc('confirm_order_payment', {
+                    p_order_id: orderId,
+                    p_yabetoo_status: 'completed'
+                });
+
+            if (confirmError) {
+                console.error('[OrderService] ❌ Erreur confirmation atomique :', confirmError);
+                return { error: confirmError };
+            }
+
+            console.log('[OrderService] ✅ Résultat confirmation atomique :', confirmResult);
+            return { data: confirmResult.order, error: null };
+        }
+
         const { data, error } = await supabase
             .from('orders')
             .update({ status })

@@ -17,12 +17,15 @@ interface Order {
     profiles?: {
         full_name: string;
         store_name: string;
+        avatar_url?: string;
     };
+    delivery_otp_hash?: string;
+    shipped_at?: string;
 }
 
 interface OrderCardProps {
     order: Order;
-    userRole: 'buyer' | 'seller';
+    userRole: 'buyer' | 'seller' | 'affiliate';
     onViewDetails: (order: Order) => void;
     onAction?: (orderId: string, action: string) => void;
 }
@@ -185,17 +188,33 @@ const OrderCard = ({ order, userRole, onViewDetails, onAction }: OrderCardProps)
 
             {/* Store/Buyer Info */}
             <div style={styles.storeInfo}>
-                {userRole === 'buyer' ? (
-                    <Store size={14} color="var(--text-secondary)" />
-                ) : (
-                    <User size={14} color="var(--text-secondary)" />
-                )}
+                <div style={styles.avatarContainer}>
+                    {order.profiles?.avatar_url ? (
+                        <img src={order.profiles.avatar_url} alt="Profile" style={styles.avatarImg} />
+                    ) : (
+                        userRole === 'buyer' ? (
+                            <Store size={14} color="var(--primary)" />
+                        ) : (
+                            <User size={14} color="var(--primary)" />
+                        )
+                    )}
+                </div>
                 <span style={styles.storeName}>
                     {userRole === 'buyer'
                         ? (order.profiles?.store_name || order.profiles?.full_name || 'Boutique')
                         : (order.profiles?.full_name || 'Client')}
                 </span>
             </div>
+
+            {/* OTP Section for Buyer when Shipped */}
+            {userRole === 'buyer' && order.status === 'shipped' && order.delivery_otp_hash && (
+                <div style={styles.otpContainer}>
+                    <div style={styles.otpLabel}>Code de Sécurité (À donner au livreur) :</div>
+                    <div style={styles.otpBox}>
+                        {order.delivery_otp_hash}
+                    </div>
+                </div>
+            )}
 
             {/* Actions */}
             {renderActions()}
@@ -285,6 +304,22 @@ const styles = {
         fontWeight: '600',
         color: 'var(--text-secondary)',
     },
+    avatarContainer: {
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        overflow: 'hidden',
+        background: 'rgba(255,255,255,0.05)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: '1px solid rgba(255,255,255,0.1)',
+    },
+    avatarImg: {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover' as const,
+    },
     actions: {
         display: 'flex',
         gap: '8px',
@@ -321,6 +356,28 @@ const styles = {
         justifyContent: 'center',
         gap: '6px',
         transition: 'all 0.2s ease',
+    },
+    otpContainer: {
+        padding: '16px',
+        background: 'rgba(138, 43, 226, 0.1)',
+        borderRadius: '12px',
+        border: '1px dashed var(--primary)',
+        marginTop: '8px',
+        textAlign: 'center' as const,
+    },
+    otpLabel: {
+        fontSize: '11px',
+        color: 'var(--text-secondary)',
+        marginBottom: '4px',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.5px',
+    },
+    otpBox: {
+        fontSize: '24px',
+        fontWeight: '900',
+        color: 'var(--primary)',
+        letterSpacing: '4px',
+        fontFamily: 'monospace',
     },
 };
 
