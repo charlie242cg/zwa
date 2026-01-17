@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Loader2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { orderService, OrderStatus } from '../../services/orderService';
-import { reviewService } from '../../services/reviewService';
+import { paymentService } from '../../services/paymentService';
 import ReviewModal from '../../components/reviews/ReviewModal';
 import OrderTabs from '../../components/orders/OrderTabs';
 import OrderCard from '../../components/orders/OrderCard';
@@ -12,12 +13,11 @@ import { useSkeletonAnimation, SkeletonOrderCard } from '../../components/common
 import { useOrders } from '../../hooks/useOrders';
 import { useOrderCounts } from '../../hooks/useOrderCounts';
 import { useDebounce } from '../../hooks/useDebounce';
-import { useQueryClient } from '@tanstack/react-query';
 
 const OrdersList = () => {
     useSkeletonAnimation();
     const { profile } = useAuth();
-    const queryClient = useQueryClient();
+    const navigate = useNavigate();
 
     const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +81,37 @@ const OrdersList = () => {
             if (order) {
                 setSelectedOrderForReview(order);
                 setReviewModalOpen(true);
+            }
+        } else if (action === 'pay') {
+            // Reprendre le paiement d'une commande en attente
+            const order = orders.find(o => o.id === orderId);
+            if (!order) return;
+
+            // Vérifier si c'est un achat direct (via page produit/lien affilié)
+            const isDirectPurchase = order.notes?.includes('Achat direct');
+
+            // Vérifier si le lien de paiement existe et n'est pas expiré
+            const hasValidPaymentUrl = order.yabetoo_payment_url &&
+                (!order.expires_at || new Date(order.expires_at) > new Date());
+
+            if (hasValidPaymentUrl) {
+                // Lien valide -> rediriger vers le paiement
+                window.location.href = order.yabetoo_payment_url;
+            } else if (isDirectPurchase) {
+                // Achat direct avec lien expiré -> recréer un nouveau lien
+                try {
+                    const { checkout_url, error } = await paymentService.createYabetooCheckout(orderId);
+                    if (error) {
+                        alert("Erreur lors de la création du paiement. Réessayez.");
+                    } else if (checkout_url) {
+                        window.location.href = checkout_url;
+                    }
+                } catch {
+                    alert("Erreur inattendue. Veuillez réessayer.");
+                }
+            } else {
+                // Lien personnalisé (via chat) expiré -> rouvrir le chat avec le vendeur
+                navigate(`/chat/${order.seller_id}`);
             }
         }
     };

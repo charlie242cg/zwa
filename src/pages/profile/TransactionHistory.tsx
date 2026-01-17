@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, FileText, Filter } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { transactionService, Transaction } from '../../services/transactionService';
+import { useTransactions } from '../../hooks/useTransactions';
 import { invoiceService } from '../../services/invoiceService';
 import { useSkeletonAnimation, SkeletonTransactionList } from '../../components/common/SkeletonLoader';
 
@@ -12,47 +13,18 @@ const TransactionHistory = () => {
     useSkeletonAnimation();
     const navigate = useNavigate();
     const { user, profile } = useAuth();
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<FilterType>('all');
-    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (user) {
-            loadTransactions();
-        }
-    }, [user, filter]);
+    const {
+        data: transactions = [],
+        isLoading: loading,
+        error: queryError,
+        refetch
+    } = useTransactions(user?.id, filter);
 
-    const loadTransactions = async () => {
-        if (!user) {
-            console.error('[TransactionHistory] ❌ No user found');
-            return;
-        }
+    const error = queryError ? (queryError as any).message || 'Erreur de chargement' : null;
 
-        console.log('[TransactionHistory] 🔄 Loading transactions for user:', user.id, 'with filter:', filter);
-        setLoading(true);
-        setError(null);
-
-        const { data, error: loadError } = await transactionService.getTransactionsByUser(user.id, filter);
-
-        if (loadError) {
-            console.error('[TransactionHistory] ❌ Error loading transactions:', loadError);
-            console.error('[TransactionHistory] ❌ Error details:', {
-                message: loadError.message,
-                details: loadError.details,
-                hint: loadError.hint,
-                code: loadError.code
-            });
-            setError(loadError.message || 'Erreur lors du chargement des transactions');
-            setTransactions([]);
-        } else {
-            setTransactions(data || []);
-            console.log('[TransactionHistory] ✅ Loaded transactions:', data?.length);
-            console.log('[TransactionHistory] 📊 Transaction data:', data);
-        }
-
-        setLoading(false);
-    };
+    // useEffect removed - data fetching is handled by the hook automatically
 
     const handleDownloadInvoice = (transaction: Transaction) => {
         if (!user || !profile) return;
@@ -215,7 +187,7 @@ const TransactionHistory = () => {
                         <div style={styles.errorIcon}>⚠️</div>
                         <h3 style={styles.errorTitle}>Erreur de chargement</h3>
                         <p style={styles.errorText}>{error}</p>
-                        <button onClick={loadTransactions} style={styles.retryButton}>
+                        <button onClick={() => refetch()} style={styles.retryButton}>
                             🔄 Réessayer
                         </button>
                         <div style={styles.debugInfo}>

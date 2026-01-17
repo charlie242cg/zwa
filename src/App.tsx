@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, useQueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import './styles/variables.css';
 import './styles/global.css';
@@ -37,23 +39,44 @@ const queryClient = new QueryClient({
     },
 });
 
+const persister = createSyncStoragePersister({
+    storage: window.localStorage,
+});
+
 function App() {
     return (
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{
+                persister,
+                maxAge: 1000 * 60 * 60 * 24, // 24 hours
+                buster: 'v1', // Increment this to clear cache on deploy
+            }}
+        >
             <AuthProvider>
                 <Router>
                     <AppContent />
                 </Router>
             </AuthProvider>
             <ReactQueryDevtools initialIsOpen={false} />
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
     );
 }
+
+import { useBootstrapData } from './hooks/useBootstrapData';
+import { useYabetooReturn } from './hooks/useYabetooReturn';
 
 function AppContent() {
     const { user, profile, loading } = useAuth();
     const routerLocation = useLocation();
     const location = window.location;
+    const queryClient = useQueryClient();
+
+    // Start background data fetching
+    useBootstrapData();
+
+    // Handle Yabetoo payment gateway returns
+    useYabetooReturn();
 
     // Global Affiliate Tracking
     useEffect(() => {
@@ -68,23 +91,31 @@ function AppContent() {
         }
     }, [location.search]);
 
-    if (loading) {
-        return (
-            <div style={{
-                height: '100vh',
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                background: '#121212',
-                color: 'var(--primary)',
-                gap: '20px'
-            }}>
-                <div className="loading-spinner"></div>
-                <span style={{ fontSize: '16px', fontWeight: '600' }}>Chargement...</span>
-            </div>
-        );
+    // Show minimal loading indicator only on first initialization without cached data
+    // This prevents blocking the entire UI when returning from Yabetoo
+    if (loading && !user && !profile) {
+        // Check if we have any cached data to show
+        const hasCache = queryClient.getQueryData(['bootstrap']) !== undefined;
+
+        if (!hasCache) {
+            // True first load - show minimal spinner
+            return (
+                <div style={{
+                    height: '100vh',
+                    width: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    background: '#121212',
+                    color: 'var(--primary)',
+                    gap: '20px'
+                }}>
+                    <div className="loading-spinner"></div>
+                    <span style={{ fontSize: '16px', fontWeight: '600' }}>Chargement...</span>
+                </div>
+            );
+        }
     }
 
     // Hide bottom nav only on admin routes, not based on user role

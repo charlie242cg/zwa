@@ -45,7 +45,7 @@ const StorePage = () => {
         return allProducts;
     }, [productsData, filter]);
 
-    const loading = isLoadingStore || isLoadingProducts;
+    const loading = isLoadingStore; // Only block UI for store details
 
     const handleFollow = async () => {
         if (!user || !sellerId) {
@@ -141,11 +141,7 @@ const StorePage = () => {
     }
 
     if (!store) {
-        return (
-            <div style={styles.container}>
-                <div style={styles.centered}>Boutique introuvable</div>
-            </div>
-        );
+        // ...
     }
 
     return (
@@ -230,7 +226,7 @@ const StorePage = () => {
                 </div>
                 <div style={styles.statDivider}></div>
                 <div style={styles.statItem}>
-                    <div style={styles.statValue}>{getMemberSince(store.created_at)}</div>
+                    <div style={styles.statValue}>{getMemberSince(store?.created_at || new Date().toISOString())}</div>
                     <div style={styles.statLabel}>
                         <Calendar size={12} color="var(--text-secondary)" />
                         Membre
@@ -354,7 +350,11 @@ const StorePage = () => {
 
             {/* Products Grid */}
             <div style={styles.productsSection}>
-                {products.length > 0 ? (
+                {isLoadingProducts ? (
+                    <div style={{ marginTop: '20px' }}>
+                        <SkeletonProductGrid count={6} columns={2} gap={16} />
+                    </div>
+                ) : products.length > 0 ? (
                     <div style={styles.productsGrid}>
                         {products.map((product) => (
                             <div

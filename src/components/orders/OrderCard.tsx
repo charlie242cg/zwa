@@ -1,4 +1,4 @@
-import { Package, Clock, Store, MessageSquare, Star, AlertCircle, User } from 'lucide-react';
+import { Package, Clock, Store, MessageSquare, Star, AlertCircle, User, CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Order {
@@ -21,6 +21,9 @@ interface Order {
     };
     delivery_otp_hash?: string;
     shipped_at?: string;
+    yabetoo_payment_url?: string;
+    expires_at?: string;
+    notes?: string;
 }
 
 interface OrderCardProps {
@@ -121,6 +124,17 @@ const OrderCard = ({ order, userRole, onViewDetails, onAction }: OrderCardProps)
         } else {
             // Buyer actions
             switch (order.status) {
+                case 'pending':
+                    return (
+                        <div style={styles.actions}>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onAction?.(order.id, 'pay'); }}
+                                style={styles.actionButtonPrimary}
+                            >
+                                <CreditCard size={16} /> Payer
+                            </button>
+                        </div>
+                    );
                 case 'delivered':
                     return (
                         <div style={styles.actions}>

@@ -8,11 +8,13 @@
   "executionArgs": {
     "projectName": "zwa",
     "projectPath": "/Users/mx/Desktop/zwa",
-    "testIds": [],
-    "additionalInstruction": "Focus ONLY on the following:\n1. Access the Home page BEFORE logging in to verify it works offline/for visitors.\n2. Perform the COMPLETE buyer workflow while LOGGED IN:\n   - Login\n   - Find a product\n   - Open chat with seller\n   - Negotiate/Receive an offer (simulate)\n   - Complete the purchase\n   - Verify order status and OTP delivery logic.\nEnsure the test covers both public (Home) and private (Buyer dashboard/Chat/Orders) areas.",
+    "testIds": [
+      "DISC_001"
+    ],
+    "additionalInstruction": "Execute ONLY the test DISC_001. This test is at the beginning of the testsprite_frontend_test_plan.json file. It covers the disconnected user flow.",
     "envs": {
       "API_KEY": "sk-user-WIxxmiTq0-irv8VvwHcsonYsTSbylZSILbCh1uaznmrDFsb6ArRAvGsQp7ZOFBloRygcwgofzI0eM9sgRFC2gSXkRX3JAyTkk-lrJWjAvvfK6I3GjUzH9UjzJgzbYIkW9Ig"
     }
   },
-  "proxy": "http://c6849e02-05c4-4c6c-8b34-594919352c03:5zWqztmNHMutAiejls4RY8C20ZKCCiKN@tun.testsprite.com:8080"
+  "proxy": "http://b0091801-2051-4328-b0a5-ecad0dc1055b:l133bzdHklCogVA6H90dtXLV1Kk4hzVB@tun.testsprite.com:8080"
 }

@@ -46,6 +46,7 @@ export const useSellerStats = (userId: string | undefined) => {
             };
         },
         enabled: !!userId,
-        staleTime: 60000, // 1 minute
+        staleTime: 1000 * 60 * 5, // 5 minutes (Data is considered "fresh" for 5 mins)
+        gcTime: 1000 * 60 * 60 * 24, // 24 hours (Keep data in cache for a day)
     });
 };

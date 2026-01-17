@@ -1,0 +1,67 @@
+[
+    {
+        "id": "DISC_001",
+        "title": "Disconnected User Flow",
+        "description": "Verify the flow for a visitor not logged in: browse products, view details, view shop, and check authentication triggers.",
+        "category": "functional",
+        "priority": "High",
+        "steps": [
+            {
+                "type": "action",
+                "description": "Navigate to the home page"
+            },
+            {
+                "type": "assertion",
+                "description": "Check that the home page is loaded and products are visible"
+            },
+            {
+                "type": "action",
+                "description": "Click on a product card"
+            },
+            {
+                "type": "assertion",
+                "description": "Verify navigation to the product detail page"
+            },
+            {
+                "type": "assertion",
+                "description": "Verify product price, title, and images are displayed"
+            },
+            {
+                "type": "action",
+                "description": "Scroll to reviews section and verify reviews are displayed (if any)"
+            },
+            {
+                "type": "action",
+                "description": "Click on the shop name or visit shop link"
+            },
+            {
+                "type": "assertion",
+                "description": "Verify navigation to the store page"
+            },
+            {
+                "type": "action",
+                "description": "Navigate back to the product detail page"
+            },
+            {
+                "type": "action",
+                "description": "Click on the 'Acheter' (Buy) button"
+            },
+            {
+                "type": "assertion",
+                "description": "Verify redirection to the authentication page"
+            },
+            {
+                "type": "action",
+                "description": "Navigate back to the home page"
+            },
+            {
+                "type": "action",
+                "description": "Click on the 'Messages' icon in navigation"
+            },
+            {
+                "type": "assertion",
+                "description": "Verify redirection to the authentication page"
+            }
+        ]
+    }
+]

@@ -2,25 +2,21 @@ import { Home, ShoppingBag, User, Briefcase, MessageSquare, TrendingUp } from 'l
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { chatService } from '../../services/chatService';
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import '../../styles/variables.css';
 
 const BottomNav = () => {
     const { profile, user } = useAuth();
-    const [unreadCount, setUnreadCount] = useState(0);
-
-    useEffect(() => {
-        if (user) {
-            const fetchUnread = async () => {
-                const count = await chatService.getUnreadCount(user.id);
-                setUnreadCount(count);
-            };
-            fetchUnread();
-            // Refresh every 30 seconds
-            const interval = setInterval(fetchUnread, 30000);
-            return () => clearInterval(interval);
-        }
-    }, [user]);
+    const { data: unreadCount = 0 } = useQuery({
+        queryKey: ['unread-messages-count', user?.id],
+        queryFn: async () => {
+            if (!user?.id) return 0;
+            return chatService.getUnreadCount(user.id);
+        },
+        enabled: !!user?.id,
+        refetchInterval: 30000, // Refresh every 30 seconds
+        staleTime: 30000,
+    });
 
     // Visitor navigation - show simplified nav for non-authenticated users
     if (!user) {

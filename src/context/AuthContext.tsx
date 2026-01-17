@@ -141,104 +141,91 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     useEffect(() => {
         let mounted = true;
-        let initialCheckDone = false;
-        let lastEventTime = 0;
 
-        // Initialize session on mount
-        const initialize = async () => {
-            console.log("[AuthContext] 🚀 Initializing auth state...");
+        // BroadcastChannel for multi-tab sync
+        const authChannel = new BroadcastChannel('zwa_auth_sync');
 
-            try {
-                const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        authChannel.onmessage = async (event) => {
+            console.log(`[AuthContext] 📡 Received broadcast event: ${event.data.type} from tab ${event.data.tabId}`);
 
-                if (error) {
-                    console.error("[AuthContext] ❌ Error getting session:", error.message);
-                    setLoading(false);
-                    return;
-                }
+            // Ignore messages from this tab to prevent loops
+            if (event.data.tabId === tabId) return;
 
-                if (!mounted) return;
-
-                console.log(`[AuthContext] 📦 Initial session: ${currentSession ? 'EXISTS' : 'NONE'}`);
-
-                setSession(currentSession);
-                setUser(currentSession?.user ?? null);
-
-                if (currentSession?.user) {
-                    console.log(`[AuthContext] 👤 Loading profile for: ${currentSession.user.email}`);
-                    await fetchProfile(currentSession.user.id);
-                } else {
-                    setProfile(null);
-                }
-
-                initialCheckDone = true;
+            if (event.data.type === 'LOGOUT') {
+                console.log("[AuthContext] 🚪 detected logout from another tab, clearing local session");
+                setSession(null);
+                setUser(null);
+                setProfile(null);
                 setLoading(false);
+            }
 
-            } catch (err) {
-                console.error("[AuthContext] ❌ Initialize error:", err);
-                if (mounted) setLoading(false);
+            if (event.data.type === 'PROFILE_UPDATED' && event.data.userId === user?.id) {
+                console.log("[AuthContext] 👤 detected profile update from another tab, reloading");
+                await fetchProfileDirect(event.data.userId); // Force reload
             }
         };
 
-        initialize();
-
-        // Listen for auth changes (login/logout only, not initial session)
         console.log("[AuthContext] 🎧 Setting up auth state listener...");
+
+        // Single unified auth listener handles EVERYTHING (initial session + updates + broadcasts)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-            // Skip INITIAL_SESSION event since we handle it manually above
-            if (event === 'INITIAL_SESSION') {
-                console.log("[AuthContext] ⏭️ Skipping INITIAL_SESSION (already handled)");
-                return;
-            }
-
-            // Throttle rapid events (ignore events within 1 second of previous)
-            const now = Date.now();
-            if (event === 'SIGNED_IN' && (now - lastEventTime) < 1000) {
-                console.log(`[AuthContext] 🚫 Throttling ${event} (too soon after previous event)`);
-                return;
-            }
-            lastEventTime = now;
-
             console.log(`[AuthContext] 🔔 Auth event: ${event} [Tab: ${tabId}]`);
 
             if (!mounted) return;
 
-            // Wait for initial check to complete before processing other events
-            if (!initialCheckDone) {
-                console.log("[AuthContext] ⏳ Waiting for initial check...");
-                return;
-            }
+            // Track previous state for broadcast decisions
+            const previousUser = user?.id;
 
+            // Update local state
             setSession(newSession);
             setUser(newSession?.user ?? null);
 
-            if (event === 'SIGNED_IN') {
-                // SIGNED_IN triggered - could be from this tab or synced from another
-                if (newSession?.user) {
-                    console.log(`[AuthContext] ✅ SIGNED_IN: Fetching profile`);
-                    sessionStorage.setItem('zwa_last_auth_tab', tabId);
-                    await fetchProfile(newSession.user.id);
-                }
-            } else if (event === 'TOKEN_REFRESHED') {
-                // Token refresh happens in background, only update if user changed
-                if (newSession?.user && newSession.user.id !== currentUserIdRef.current) {
-                    console.log(`[AuthContext] 🔄 TOKEN_REFRESHED: User changed, fetching profile`);
+            if (newSession?.user) {
+                // User is authenticated
+                if (newSession.user.id !== currentUserIdRef.current) {
+                    console.log(`[AuthContext] 👤 New user detected, fetching profile`);
                     await fetchProfile(newSession.user.id);
                 } else {
-                    console.log(`[AuthContext] 🔄 TOKEN_REFRESHED: Same user, skipping profile fetch`);
+                    // Same user, just check if we have profile data
+                    if (!profile) {
+                        console.log(`[AuthContext] 👤 Missing profile for existing user, fetching...`);
+                        await fetchProfile(newSession.user.id);
+                    }
                 }
-            } else if (event === 'SIGNED_OUT') {
-                console.log("[AuthContext] 🚪 User signed out");
-                setProfile(null);
-                setProfileError(null);
-                sessionStorage.removeItem('zwa_last_auth_tab');
+            } else {
+                // No user - handle logout
+                if (event === 'SIGNED_OUT') {
+                    console.log("[AuthContext] 🚪 User signed out");
+
+                    // Broadcast logout to other tabs if we were previously logged in
+                    if (previousUser) {
+                        const storedSession = localStorage.getItem('zwa-auth-token');
+
+                        // Only broadcast if session is truly gone (not a refresh race)
+                        if (!storedSession) {
+                            console.log(`[AuthContext] 📤 Broadcasting LOGOUT for user ${previousUser}`);
+                            authChannel.postMessage({ type: 'LOGOUT', tabId });
+                        } else {
+                            console.warn(`[AuthContext] ⚠️ SIGNED_OUT event but token exists. Skipping broadcast (likely refresh race).`);
+                        }
+                    }
+
+                    setProfile(null);
+                    setProfileError(null);
+                    currentUserIdRef.current = null;
+                    sessionStorage.removeItem('zwa_last_auth_tab');
+                }
             }
+
+            // Always turn off loading after processing the event
+            setLoading(false);
         });
 
         return () => {
             console.log("[AuthContext] 🧹 Cleanup");
             mounted = false;
             subscription.unsubscribe();
+            authChannel.close();
         };
     }, []);
 

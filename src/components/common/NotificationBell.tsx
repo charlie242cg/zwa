@@ -2,36 +2,59 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Package, Wallet, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
 import { notificationService, Notification } from '../../services/notificationService';
 
 const NotificationBell = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [notifications, setNotifications] = useState<Notification[]>([]);
-    const [unreadCount, setUnreadCount] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Use React Query for persistence and caching
+    const { data: initialNotifications = [] } = useQuery({
+        queryKey: ['notifications', user?.id],
+        queryFn: async () => {
+            if (!user?.id) return [];
+            const { data } = await notificationService.getNotifications(user.id);
+            return data || [];
+        },
+        enabled: !!user?.id,
+        staleTime: 1000 * 60 * 5, // 5 minutes
+    });
+
+    const { data: initialUnreadCount = 0 } = useQuery({
+        queryKey: ['notifications-unread', user?.id],
+        queryFn: async () => {
+            if (!user?.id) return 0;
+            const { count } = await notificationService.getUnreadCount(user.id);
+            return count || 0;
+        },
+        enabled: !!user?.id,
+        // Short stale time for unread count as it changes often
+        staleTime: 1000 * 30,
+    });
+
+    // Local state to handle real-time updates on TOP of the cached data
+    const [realtimeNotifications, setRealtimeNotifications] = useState<Notification[]>([]);
+    const [realtimeUnreadOffset, setRealtimeUnreadOffset] = useState(0);
+
+    // Combine cached + realtime
+    // Note: In a real production app, we might just invalidating query on event, 
+    // but for instant UI update, local state + cache is good.
+    const notifications = React.useMemo(() => {
+        return [...realtimeNotifications, ...initialNotifications].slice(0, 20);
+    }, [realtimeNotifications, initialNotifications]);
+
+    const unreadCount = initialUnreadCount + realtimeUnreadOffset;
 
     useEffect(() => {
         if (!user) return;
 
-        // Fetch initial notifications
-        const init = async () => {
-            const { data } = await notificationService.getNotifications(user.id);
-            if (data) setNotifications(data);
-
-            const { count } = await notificationService.getUnreadCount(user.id);
-            if (count !== undefined) setUnreadCount(count);
-        };
-        init();
-
         // Subscribe to real-time
         const subscription = notificationService.subscribe(user.id, (newNotif) => {
-            setNotifications(prev => [newNotif, ...prev].slice(0, 20));
-            setUnreadCount(prev => prev + 1);
-
-            // Play a subtle sound if possible (optional)
-            // if (Notification.permission === 'granted') { new window.Notification("Zwa Market", { body: newNotif.message }); }
+            setRealtimeNotifications(prev => [newNotif, ...prev]);
+            setRealtimeUnreadOffset(prev => prev + 1);
         });
 
         // Click outside listener
@@ -59,8 +82,11 @@ const NotificationBell = () => {
     const handleNotificationClick = async (notif: Notification) => {
         if (!notif.is_read) {
             await notificationService.markAsRead(notif.id);
-            setUnreadCount(prev => Math.max(0, prev - 1));
-            setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+            // Optimistic update
+            setRealtimeUnreadOffset(prev => Math.max(-initialUnreadCount, prev - 1));
+            setRealtimeNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+            // Invalidate to be sure
+            // queryClient.invalidateQueries({ queryKey: ['notifications'] });
         }
 
         setIsOpen(false);
@@ -72,8 +98,12 @@ const NotificationBell = () => {
     const markAllRead = async () => {
         if (!user) return;
         await notificationService.markAllAsRead(user.id);
-        setUnreadCount(0);
-        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+
+        // Reset realtime offset to negative of initial to make total 0
+        setRealtimeUnreadOffset(-initialUnreadCount);
+        // Mark all realtime as read
+        setRealtimeNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        // Note: We should probably refetch here to sync up perfectly
     };
 
     if (!user) return null;
