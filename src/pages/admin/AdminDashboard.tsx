@@ -105,7 +105,7 @@ const styles = {
         position: 'fixed' as const,
         inset: 0,
         backgroundColor: 'rgba(0,0,0,0.5)',
-        backdropFilter: 'blur(4px)',
+        // backdropFilter removed - causes crashes,
         zIndex: 90,
     },
     sidebarWrapper: {
@@ -128,7 +128,7 @@ const styles = {
         padding: '24px 40px',
         borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
         backgroundColor: 'rgba(18, 18, 18, 0.8)',
-        backdropFilter: 'blur(10px)',
+        // backdropFilter removed - causes crashes,
         position: 'sticky' as const,
         top: 0,
         zIndex: 80,

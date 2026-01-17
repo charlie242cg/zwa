@@ -422,7 +422,7 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backdropFilter: 'blur(10px)',
+        // backdropFilter removed - causes crashes,
         cursor: 'pointer',
     },
     profileSection: {

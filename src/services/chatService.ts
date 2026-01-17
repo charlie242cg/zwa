@@ -64,7 +64,7 @@ export interface Conversation {
 
 export const chatService = {
     async getConversations(userId: string) {
-        // Déterminer si l'utilisateur est acheteur ou vendeur pour chaque conversation
+        // 1. Charger les conversations avec JOINs
         const { data, error } = await supabase
             .from('conversations')
             .select(`
@@ -78,18 +78,37 @@ export const chatService = {
 
         if (error || !data) return { data: null, error };
 
-        // Filtrer les conversations masquées et ajouter compteur non lus
-        const conversationsWithUnread = await Promise.all(
-            data
-                .filter(conv => {
-                    const isBuyer = conv.buyer_id === userId;
-                    return isBuyer ? !conv.hidden_for_buyer : !conv.hidden_for_seller;
-                })
-                .map(async (conv) => {
-                    const unread_count = await chatService.getUnreadCountByConversation(conv.id, userId);
-                    return { ...conv, unread_count };
-                })
-        );
+        // 2. Filtrer les conversations masquées
+        const visibleConversations = data.filter(conv => {
+            const isBuyer = conv.buyer_id === userId;
+            return isBuyer ? !conv.hidden_for_buyer : !conv.hidden_for_seller;
+        });
+
+        if (visibleConversations.length === 0) {
+            return { data: [], error: null };
+        }
+
+        // 3. OPTIMISATION: Charger TOUS les unread counts en UNE SEULE requête
+        const conversationIds = visibleConversations.map(c => c.id);
+
+        const { data: unreadMessages } = await supabase
+            .from('messages')
+            .select('conversation_id')
+            .in('conversation_id', conversationIds)
+            .eq('is_read', false)
+            .neq('sender_id', userId);
+
+        // 4. Compter côté client (ultra rapide)
+        const unreadMap = (unreadMessages || []).reduce((acc, msg) => {
+            acc[msg.conversation_id] = (acc[msg.conversation_id] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
+        // 5. Enrichir les conversations avec unread_count
+        const conversationsWithUnread = visibleConversations.map(conv => ({
+            ...conv,
+            unread_count: unreadMap[conv.id] || 0
+        }));
 
         return { data: conversationsWithUnread, error: null };
     },

@@ -132,7 +132,7 @@ const lightboxStyles = {
         top: '50%',
         transform: 'translateY(-50%)',
         background: 'rgba(255, 255, 255, 0.2)',
-        backdropFilter: 'blur(10px)',
+        // backdropFilter removed - causes crashes,
         border: 'none',
         borderRadius: '50%',
         width: '44px',

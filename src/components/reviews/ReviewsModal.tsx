@@ -163,7 +163,7 @@ const styles = {
         right: 0,
         bottom: 0,
         background: 'rgba(0,0,0,0.85)',
-        backdropFilter: 'blur(8px)',
+        // backdropFilter removed - causes crashes,
         zIndex: 9999,
         display: 'flex',
         alignItems: 'flex-end',

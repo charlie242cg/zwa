@@ -721,7 +721,7 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backdropFilter: 'blur(10px)',
+        // backdropFilter removed - causes crashes,
         cursor: 'pointer',
     },
     imageSection: {
@@ -779,7 +779,7 @@ const styles = {
         background: 'rgba(0,0,0,0.3)',
         padding: '6px 10px',
         borderRadius: '20px',
-        backdropFilter: 'blur(5px)',
+        // backdropFilter removed - causes crashes,
     },
     dot: {
         width: '6px',

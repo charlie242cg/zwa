@@ -1,6 +1,7 @@
 import { createContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AuthContextType {
     session: Session | null;
@@ -26,6 +27,7 @@ export const AuthContext = createContext<AuthContextType>({
 const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+    const queryClient = useQueryClient();
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<any>(null);
@@ -49,13 +51,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const logout = async () => {
         try {
+            console.log('[AuthContext] 🚪 Logging out...');
             setLoading(true);
+
+            // 1. Sign out from Supabase
             await supabase.auth.signOut();
+
+            // 2. Clear React state
             setSession(null);
             setUser(null);
             setProfile(null);
+            setProfileError(null);
+            currentUserIdRef.current = null;
+
+            // 3. Clear TanStack Query cache (CRITICAL FIX)
+            console.log('[AuthContext] 🗑️ Clearing all cached data...');
+            queryClient.clear();
+
+            // 4. Clear session storage
+            sessionStorage.clear();
+
+            console.log('[AuthContext] ✅ Logout complete');
         } catch (error) {
-            console.error("Logout error:", error);
+            console.error("[AuthContext] ❌ Logout error:", error);
         } finally {
             setLoading(false);
         }
@@ -115,11 +133,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const fetchProfile = async (userId: string) => {
-        // If same user and fetched recently (< 3 seconds), skip completely
         const now = Date.now();
         if (currentUserIdRef.current === userId && (now - lastProfileFetchRef.current) < 3000) {
             console.log("[AuthContext] ⏭️ Skipping duplicate profile fetch (fetched recently)");
-            return profile;
+            return; // Just skip, don't return stale profile
         }
 
         currentUserIdRef.current = userId;
@@ -176,24 +193,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             // Track previous state for broadcast decisions
             const previousUser = user?.id;
 
-            // Update local state
-            setSession(newSession);
-            setUser(newSession?.user ?? null);
-
             if (newSession?.user) {
-                // User is authenticated
+                // User is authenticated - set session and user first
+                setSession(newSession);
+                setUser(newSession.user);
+
+                // CRITICAL FIX: Wait for profile before turning off loading
+                // This prevents BottomNav from rendering with wrong role
                 if (newSession.user.id !== currentUserIdRef.current) {
-                    console.log(`[AuthContext] 👤 New user detected, fetching profile`);
+                    console.log(`[AuthContext] 👤 New user detected, fetching profile...`);
                     await fetchProfile(newSession.user.id);
-                } else {
-                    // Same user, just check if we have profile data
-                    if (!profile) {
-                        console.log(`[AuthContext] 👤 Missing profile for existing user, fetching...`);
-                        await fetchProfile(newSession.user.id);
-                    }
+                } else if (!profile) {
+                    console.log(`[AuthContext] 👤 Missing profile for existing user, fetching...`);
+                    await fetchProfile(newSession.user.id);
                 }
+
+                // Only turn off loading AFTER profile is loaded
+                setLoading(false);
             } else {
                 // No user - handle logout
+                setSession(null);
+                setUser(null);
+
                 if (event === 'SIGNED_OUT') {
                     console.log("[AuthContext] 🚪 User signed out");
 
@@ -215,10 +236,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     currentUserIdRef.current = null;
                     sessionStorage.removeItem('zwa_last_auth_tab');
                 }
-            }
 
-            // Always turn off loading after processing the event
-            setLoading(false);
+                setLoading(false);
+            }
         });
 
         return () => {

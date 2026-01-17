@@ -230,7 +230,7 @@ const styles = {
         right: 0,
         bottom: 0,
         background: 'rgba(0, 0, 0, 0.8)',
-        backdropFilter: 'blur(8px)',
+        // backdropFilter removed - causes crashes,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

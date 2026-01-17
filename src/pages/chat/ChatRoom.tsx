@@ -724,7 +724,7 @@ const styles = {
     header: {
         padding: '16px 18px',
         background: 'rgba(18, 18, 18, 0.95)',
-        backdropFilter: 'blur(20px)',
+        // backdropFilter removed - causes crashes,
         borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
         display: 'flex',
         justifyContent: 'space-between',
@@ -980,7 +980,7 @@ const styles = {
         right: 0,
         bottom: 0,
         background: 'rgba(0,0,0,0.85)',
-        backdropFilter: 'blur(10px)',
+        // backdropFilter removed - causes crashes,
         zIndex: 3000,
         display: 'flex',
         alignItems: 'flex-end',

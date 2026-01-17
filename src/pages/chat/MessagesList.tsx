@@ -68,15 +68,6 @@ const MessagesList = () => {
 
                         const previewText = getPreviewText();
 
-                        // DEBUG: Log pour chaque conversation
-                        console.log(`💬 Rendu conversation ${conv.id}:`, {
-                            isBuyer,
-                            messagePreview,
-                            mediaType,
-                            previewText,
-                            otherParty: otherParty?.full_name
-                        });
-
 
                         return (
                             <div

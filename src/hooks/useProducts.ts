@@ -1,18 +1,28 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { productService } from '../services/productService';
 
-export const useProducts = (filters?: {
-    search?: string;
-    categories?: string[];
-    verifiedOnly?: boolean;
-    moqOne?: boolean;
-    promoOnly?: boolean;
-    sellerId?: string;
-}, limit: number = 20) => {
+export const useProducts = (
+    filters?: {
+        search?: string;
+        categories?: string[];
+        verifiedOnly?: boolean;
+        moqOne?: boolean;
+        promoOnly?: boolean;
+        sellerId?: string;
+    },
+    sortBy?: 'relevance' | 'price_asc' | 'price_desc' | 'newest',
+    limit: number = 20
+) => {
     return useInfiniteQuery({
-        queryKey: ['products', filters],
+        queryKey: ['products', filters, sortBy],
         queryFn: async ({ pageParam = 0 }) => {
-            const { data, error, count } = await productService.getPaginatedProducts(pageParam, limit, filters);
+            // Use optimized query for better performance
+            const { data, error, count } = await productService.getPaginatedProductsOptimized(
+                pageParam,
+                limit,
+                filters,
+                sortBy
+            );
             if (error) throw error;
             return {
                 products: data || [],

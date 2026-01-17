@@ -25,7 +25,7 @@ const styles = {
     header: {
         width: '100%',
         background: 'rgba(18, 18, 18, 0.9)',
-        backdropFilter: 'blur(15px)',
+        // backdropFilter removed - causes crashes,
         position: 'sticky' as const,
         top: 0,
         zIndex: 100,

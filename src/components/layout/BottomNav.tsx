@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import '../../styles/variables.css';
 
 const BottomNav = () => {
-    const { profile, user } = useAuth();
+    const { profile, user, loading } = useAuth();
     const { data: unreadCount = 0 } = useQuery({
         queryKey: ['unread-messages-count', user?.id],
         queryFn: async () => {
@@ -34,9 +34,14 @@ const BottomNav = () => {
         );
     }
 
-    // Show navigation immediately, default to buyer if profile not loaded yet
-    // This prevents the nav from disappearing during profile fetch
-    const role = profile?.role || 'buyer';
+    // CRITICAL FIX: Wait for profile to load before showing role-specific nav
+    // This prevents showing wrong tabs during profile fetch
+    if (!profile) {
+        return null; // Don't render anything until profile is loaded
+    }
+
+    // Now we're SURE profile exists and has the correct role
+    const role = profile.role;
 
 
     if (role === 'seller') {
@@ -103,6 +108,7 @@ const BottomNav = () => {
         );
     }
 
+    // Default: buyer navigation
     return (
         <nav style={styles.nav}>
             <NavLink to="/" style={({ isActive }) => ({ ...styles.link, color: isActive ? 'var(--primary)' : 'var(--text-secondary)' })}>
@@ -144,7 +150,7 @@ const styles = {
         justifyContent: 'space-around',
         alignItems: 'center',
         borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-        backdropFilter: 'blur(10px)',
+        // backdropFilter removed - causes crashes,
         paddingBottom: 'env(safe-area-inset-bottom)',
         zIndex: 1000,
     },

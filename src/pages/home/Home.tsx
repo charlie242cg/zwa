@@ -13,7 +13,7 @@ type SortOption = 'relevance' | 'price_asc' | 'price_desc' | 'newest';
 const Home = () => {
     useSkeletonAnimation();
     const [searchQuery, setSearchQuery] = useState('');
-    const debouncedSearch = useDebounce(searchQuery, 500);
+    const debouncedSearch = useDebounce(searchQuery, 300); // Reduced from 500ms
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [sortBy, setSortBy] = useState<SortOption>('relevance');
     const [badges, setBadges] = useState({
@@ -34,7 +34,7 @@ const Home = () => {
         promoOnly: badges.promoOnly,
     }), [debouncedSearch, selectedCategories, badges.verifiedOnly, badges.moqOne, badges.promoOnly]);
 
-    // Data fetching using Query hooks
+    // Data fetching using Query hooks - now with server-side sorting
     const { data: categoriesData, isLoading: categoriesLoading } = useCategories();
     const {
         data: productsData,
@@ -42,7 +42,7 @@ const Home = () => {
         isFetchingNextPage,
         hasNextPage,
         fetchNextPage
-    } = useProducts(filters);
+    } = useProducts(filters, sortBy); // Pass sortBy for server-side sorting
 
     const categories = categoriesData || [];
     const products = useMemo(() => {
@@ -63,29 +63,10 @@ const Home = () => {
         setBadges(prev => ({ ...prev, [badge]: !prev[badge] }));
     };
 
-    // Combined filtering and sorting logic
+    // Products are now sorted server-side, no need for client-side sorting
     const filteredProducts = useMemo(() => {
-        let results = [...products];
-
-        // Apply sorting locally on the already fetched results
-        switch (sortBy) {
-            case 'price_asc':
-                results.sort((a, b) => a.price - b.price);
-                break;
-            case 'price_desc':
-                results.sort((a, b) => b.price - a.price);
-                break;
-            case 'newest':
-                results.sort((a, b) =>
-                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-                );
-                break;
-            default: // relevance
-                break;
-        }
-
-        return results;
-    }, [products, sortBy]);
+        return productsData?.pages.flatMap(page => page.products) || [];
+    }, [productsData]);
 
     const sortOptions = [
         { value: 'relevance' as SortOption, label: 'Pertinence' },
@@ -533,7 +514,7 @@ const styles = {
         borderRadius: '12px',
         padding: '8px',
         zIndex: 100,
-        backdropFilter: 'blur(10px)',
+        // backdropFilter removed - causes crashes,
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
     },
     sortOption: {

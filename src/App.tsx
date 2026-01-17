@@ -91,31 +91,25 @@ function AppContent() {
         }
     }, [location.search]);
 
-    // Show minimal loading indicator only on first initialization without cached data
-    // This prevents blocking the entire UI when returning from Yabetoo
-    if (loading && !user && !profile) {
-        // Check if we have any cached data to show
-        const hasCache = queryClient.getQueryData(['bootstrap']) !== undefined;
-
-        if (!hasCache) {
-            // True first load - show minimal spinner
-            return (
-                <div style={{
-                    height: '100vh',
-                    width: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    background: '#121212',
-                    color: 'var(--primary)',
-                    gap: '20px'
-                }}>
-                    <div className="loading-spinner"></div>
-                    <span style={{ fontSize: '16px', fontWeight: '600' }}>Chargement...</span>
-                </div>
-            );
-        }
+    // Show loading spinner only during initial auth check
+    // AuthContext now ensures profile is loaded before setting loading=false
+    if (loading) {
+        return (
+            <div style={{
+                height: '100vh',
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                background: '#121212',
+                color: 'var(--primary)',
+                gap: '20px'
+            }}>
+                <div className="loading-spinner"></div>
+                <span style={{ fontSize: '16px', fontWeight: '600' }}>Chargement...</span>
+            </div>
+        );
     }
 
     // Hide bottom nav only on admin routes, not based on user role

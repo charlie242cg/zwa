@@ -11,6 +11,6 @@ export const useConversations = (userId: string | undefined) => {
             return data || [];
         },
         enabled: !!userId,
-        staleTime: 30000, // 30 seconds
+        staleTime: 1000 * 60 * 5, // 5 minutes (increased from 30s)
     });
 };
