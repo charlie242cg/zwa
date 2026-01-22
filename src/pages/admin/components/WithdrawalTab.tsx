@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, X, Phone, Clock, MoreVertical, Wallet, Filter, CheckCircle, XCircle } from 'lucide-react';
 import { transactionService, Transaction } from '../../../services/transactionService';
-import { useSkeletonAnimation, SkeletonBar } from '../../../components/common/SkeletonLoader';
+import { SkeletonBar } from '../../../components/common/SkeletonLoader';
 
 type FilterStatus = 'all' | 'pending' | 'completed' | 'rejected';
 
@@ -29,7 +29,6 @@ const SkeletonWithdrawalCard = () => (
 );
 
 const WithdrawalTab = () => {
-    useSkeletonAnimation();
     const [withdrawals, setWithdrawals] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<FilterStatus>('pending');

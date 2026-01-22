@@ -5,10 +5,9 @@ import { chatService, Conversation } from '../../services/chatService';
 import { useAuth } from '../../hooks/useAuth';
 import { useConversations } from '../../hooks/useConversations';
 import { formatTimestamp } from '../../utils/timeFormat';
-import { useSkeletonAnimation, SkeletonConversationList } from '../../components/common/SkeletonLoader';
+import { SkeletonConversationList } from '../../components/common/SkeletonLoader';
 
 const MessagesList = () => {
-    useSkeletonAnimation(); // Ajoute l'animation CSS
     const { user, profile } = useAuth();
     const navigate = useNavigate();
 

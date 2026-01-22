@@ -134,6 +134,24 @@ body {
     }
 }
 
+/* App Loading Screen */
+.app-loading-screen {
+    height: 100vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #121212;
+    color: var(--primary);
+    gap: 20px;
+}
+
+.app-loading-text {
+    font-size: 16px;
+    font-weight: 600;
+}
+
 @keyframes slideUp {
     from {
         opacity: 0;

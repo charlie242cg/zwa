@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Save, Percent, DollarSign, TrendingUp, AlertCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { useSkeletonAnimation, SkeletonBar } from '../../../components/common/SkeletonLoader';
+import { SkeletonBar } from '../../../components/common/SkeletonLoader';
 
 interface PlatformSettings {
     commission_rate: number;
@@ -11,7 +11,6 @@ interface PlatformSettings {
 }
 
 const SettingsTab = () => {
-    useSkeletonAnimation();
     const [settings, setSettings] = useState<PlatformSettings>({
         commission_rate: 5,
         aggregator_rate: 2,
@@ -239,7 +238,7 @@ const SettingsTab = () => {
                         <span style={styles.exampleLabel}>Commission Zwa ({settings.commission_rate}%)</span>
                         <span style={styles.exampleValue}>-{(10000 * settings.commission_rate / 100).toFixed(0)} FCFA</span>
                     </div>
-                    <div style={{...styles.exampleItem, ...styles.exampleTotal}}>
+                    <div style={{ ...styles.exampleItem, ...styles.exampleTotal }}>
                         <span style={styles.exampleLabel}>Part Vendeur</span>
                         <span style={styles.exampleValue}>
                             {(10000 - (10000 * settings.aggregator_rate / 100) - (10000 * settings.commission_rate / 100)).toFixed(0)} FCFA

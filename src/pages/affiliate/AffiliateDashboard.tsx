@@ -4,7 +4,7 @@ import { TrendingUp, DollarSign, Package, Link as LinkIcon, Search, Clock, Pause
 import { productService } from '../../services/productService';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/common/Toast';
-import { useSkeletonAnimation, SkeletonAffiliateStats, SkeletonMissionList, SkeletonAffiliateLinkItem } from '../../components/common/SkeletonLoader';
+import { SkeletonAffiliateStats, SkeletonMissionList, SkeletonAffiliateLinkItem } from '../../components/common/SkeletonLoader';
 import { useAffiliateStats } from '../../hooks/useAffiliateStats';
 import { useAffiliateLinks } from '../../hooks/useAffiliateLinks';
 import { useProducts } from '../../hooks/useProducts';
@@ -12,7 +12,6 @@ import { useProducts } from '../../hooks/useProducts';
 const AffiliateDashboard = () => {
     const { user, profile } = useAuth();
     const { showToast, ToastComponent } = useToast();
-    useSkeletonAnimation();
 
     const [activeTab, setActiveTab] = useState<'wallet' | 'missions' | 'links' | 'sales'>('wallet');
     const [searchTerm, setSearchTerm] = useState('');
@@ -21,7 +20,7 @@ const AffiliateDashboard = () => {
     // TanStack Query Hooks
     const { data: affiliateData, isLoading: statsLoading } = useAffiliateStats(user?.id);
     const { links, isLoading: linksLoading, pause, resume, archive, register } = useAffiliateLinks(user?.id);
-    const { data: productsData, isLoading: missionsLoading } = useProducts({ promoOnly: true }, 100);
+    const { data: productsData, isLoading: missionsLoading } = useProducts({ promoOnly: true }, undefined);
 
     const stats = affiliateData || {
         totalEarned: 0,

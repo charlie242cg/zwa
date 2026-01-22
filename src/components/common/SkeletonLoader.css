@@ -1,0 +1,313 @@
+/* SkeletonLoader.css */
+
+/* Animation Keyframes */
+@keyframes skeletonPulse {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Base Skeleton Bar */
+.skeleton-bar {
+    background: rgba(255, 255, 255, 0.05);
+    position: relative;
+    overflow: hidden;
+}
+
+.skeleton-shimmer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+/* Skeleton Text Container */
+.skeleton-text-container {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Skeleton Product Card */
+.skeleton-product-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.skeleton-product-card-content {
+    padding: 12px;
+}
+
+/* Skeleton Review */
+.skeleton-review {
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 16px;
+}
+
+.skeleton-review-content {
+    flex: 1;
+}
+
+/* Skeleton Product Grid */
+.skeleton-product-grid {
+    display: grid;
+}
+
+/* Skeleton Order Card */
+.skeleton-order-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px;
+}
+
+.skeleton-order-header {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.skeleton-order-info {
+    flex: 1;
+}
+
+.skeleton-order-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+}
+
+/* Skeleton Conversation Item */
+.skeleton-conversation-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.skeleton-conversation-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.skeleton-conversation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+/* Skeleton Conversation List */
+.skeleton-conversation-list {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Skeleton Transaction Item */
+.skeleton-transaction-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px;
+}
+
+.skeleton-transaction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.skeleton-transaction-type {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.skeleton-transaction-product {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.skeleton-transaction-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Skeleton Transaction List */
+.skeleton-transaction-list {
+    display: flex;
+    flex-direction: column;
+    padding: 0 20px;
+}
+
+/* Skeleton Chat Message */
+.skeleton-chat-message {
+    display: flex;
+    width: 100%;
+}
+
+.skeleton-chat-message-bubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 16px;
+}
+
+.skeleton-chat-message-own {
+    justify-content: flex-end;
+}
+
+.skeleton-chat-message-own .skeleton-chat-message-bubble {
+    background: rgba(138, 43, 226, 0.2);
+    border-bottom-right-radius: 4px;
+    border-bottom-left-radius: 16px;
+}
+
+.skeleton-chat-message-other {
+    justify-content: flex-start;
+}
+
+.skeleton-chat-message-other .skeleton-chat-message-bubble {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom-right-radius: 16px;
+    border-bottom-left-radius: 4px;
+}
+
+/* Skeleton Chat Messages List */
+.skeleton-chat-messages {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+}
+
+/* Skeleton Chat Header */
+.skeleton-chat-header {
+    padding: 12px 16px;
+    background: rgba(18, 18, 18, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.skeleton-chat-header-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Skeleton Affiliate Stats */
+.skeleton-affiliate-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.skeleton-affiliate-stat-card {
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 20px;
+}
+
+/* Skeleton Mission/Link Item */
+.skeleton-list-item {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 16px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.skeleton-list-item-content {
+    flex: 1;
+}
+
+.skeleton-list-item-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.skeleton-list {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Skeleton Profile */
+.skeleton-profile-container {
+    padding: 40px 20px;
+    max-width: 500px;
+    margin: 0 auto;
+    min-height: 100vh;
+}
+
+.skeleton-profile-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.skeleton-profile-wallet-section {
+    margin-bottom: 32px;
+}
+
+.skeleton-profile-wallet-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.skeleton-profile-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.skeleton-profile-menu-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.skeleton-profile-logout {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 8px;
+}

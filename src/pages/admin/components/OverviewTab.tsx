@@ -1,5 +1,5 @@
 import { TrendingUp, Wallet, Users, ShoppingBag, AlertCircle, Package, DollarSign, CheckCircle, Clock, Loader2 } from 'lucide-react';
-import { useSkeletonAnimation, SkeletonBar } from '../../../components/common/SkeletonLoader';
+import { SkeletonAffiliateStats, SkeletonBar } from '../../../components/common/SkeletonLoader';
 import { useAdminStats } from '../../../hooks/useAdminStats';
 
 const StatCard = ({ icon, label, value, trend, subtitle, alert }: {
@@ -42,7 +42,6 @@ const SkeletonStatCard = () => (
 );
 
 const OverviewTab = () => {
-    useSkeletonAnimation();
     const { data: stats, isLoading: loading } = useAdminStats();
 
     if (loading || !stats) {

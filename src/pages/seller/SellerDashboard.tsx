@@ -5,14 +5,13 @@ import { Link } from 'react-router-dom';
 import { productService } from '../../services/productService';
 import { useAuth } from '../../hooks/useAuth';
 import StarRating from '../../components/reviews/StarRating';
-import { useSkeletonAnimation, SkeletonBar } from '../../components/common/SkeletonLoader';
+import { SkeletonBar } from '../../components/common/SkeletonLoader';
 import KYCRequestModal from '../../components/kyc/KYCRequestModal';
 import { useSellerStats } from '../../hooks/useSellerStats';
 import { useProducts } from '../../hooks/useProducts';
 import { useQueryClient } from '@tanstack/react-query';
 
 const SellerDashboard = () => {
-    useSkeletonAnimation();
     const { user } = useAuth();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -21,7 +20,7 @@ const SellerDashboard = () => {
 
     // TanStack Query Hooks
     const { data: sellerData, isLoading: statsLoading, refetch: refetchStats } = useSellerStats(user?.id);
-    const { data: productsData, isLoading: productsLoading } = useProducts({ sellerId: user?.id }, 100);
+    const { data: productsData, isLoading: productsLoading } = useProducts({ sellerId: user?.id }, undefined);
 
     const stats = sellerData?.stats || {
         totalSales: 0,

@@ -5,12 +5,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { transactionService, Transaction } from '../../services/transactionService';
 import { useTransactions } from '../../hooks/useTransactions';
 import { invoiceService } from '../../services/invoiceService';
-import { useSkeletonAnimation, SkeletonTransactionList } from '../../components/common/SkeletonLoader';
+import { SkeletonTransactionList } from '../../components/common/SkeletonLoader';
 
 type FilterType = 'all' | 'purchase' | 'sale' | 'commission' | 'withdrawal';
 
 const TransactionHistory = () => {
-    useSkeletonAnimation();
     const navigate = useNavigate();
     const { user, profile } = useAuth();
     const [filter, setFilter] = useState<FilterType>('all');

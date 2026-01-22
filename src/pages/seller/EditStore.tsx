@@ -4,10 +4,9 @@ import { ArrowLeft, Upload, MapPin, FileText, Store, Phone } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { uploadToCloudinary } from '../../lib/cloudinary';
-import { useSkeletonAnimation, SkeletonBar } from '../../components/common/SkeletonLoader';
+import { SkeletonBar } from '../../components/common/SkeletonLoader';
 
 const EditStore = () => {
-    useSkeletonAnimation();
     const navigate = useNavigate();
     const { user, profile } = useAuth();
     const [initialLoading, setInitialLoading] = useState(true);
@@ -36,7 +35,7 @@ const EditStore = () => {
         return () => {
             try {
                 document.head.removeChild(style);
-            } catch (e) {}
+            } catch (e) { }
         };
     }, []);
 

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ShoppingBag, X, ChevronDown, Shield, Flame, TrendingUp, Package, Search, Tag, Loader2 } from 'lucide-react';
 import ProductCard from '../../components/products/ProductCard';
 import { Product } from '../../services/productService';
-import { useSkeletonAnimation, SkeletonProductGrid } from '../../components/common/SkeletonLoader';
+import { SkeletonProductGrid } from '../../components/common/SkeletonLoader';
 import { useProducts } from '../../hooks/useProducts';
 import { useCategories } from '../../hooks/useCategories';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -11,7 +11,6 @@ import { useDebounce } from '../../hooks/useDebounce';
 type SortOption = 'relevance' | 'price_asc' | 'price_desc' | 'newest';
 
 const Home = () => {
-    useSkeletonAnimation();
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 300); // Reduced from 500ms
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);

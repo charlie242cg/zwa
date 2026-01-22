@@ -43,15 +43,17 @@ const persister = createSyncStoragePersister({
     storage: window.localStorage,
 });
 
+const persistOptions = {
+    persister,
+    maxAge: 1000 * 60 * 60 * 24, // 24 hours
+    buster: 'v1', // Increment this to clear cache on deploy
+};
+
 function App() {
     return (
         <PersistQueryClientProvider
             client={queryClient}
-            persistOptions={{
-                persister,
-                maxAge: 1000 * 60 * 60 * 24, // 24 hours
-                buster: 'v1', // Increment this to clear cache on deploy
-            }}
+            persistOptions={persistOptions}
         >
             <AuthProvider>
                 <Router>
@@ -95,19 +97,9 @@ function AppContent() {
     // AuthContext now ensures profile is loaded before setting loading=false
     if (loading) {
         return (
-            <div style={{
-                height: '100vh',
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                background: '#121212',
-                color: 'var(--primary)',
-                gap: '20px'
-            }}>
+            <div className="app-loading-screen">
                 <div className="loading-spinner"></div>
-                <span style={{ fontSize: '16px', fontWeight: '600' }}>Chargement...</span>
+                <span className="app-loading-text">Chargement...</span>
             </div>
         );
     }

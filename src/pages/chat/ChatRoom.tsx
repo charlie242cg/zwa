@@ -8,10 +8,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { useMessages } from '../../hooks/useMessages';
 import { useConversationDetail } from '../../hooks/useConversationDetail';
 import { useChatActions } from '../../hooks/useChatActions';
-import { SkeletonChatHeader, SkeletonChatMessages, useSkeletonAnimation } from '../../components/common/SkeletonLoader';
+import { SkeletonChatHeader, SkeletonChatMessages } from '../../components/common/SkeletonLoader';
 
 const ChatRoom = () => {
-    useSkeletonAnimation(); // Ajoute l'animation CSS
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();

@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2, Edit2, Save, X, GripVertical, Eye, EyeOff } from 'lucide-react';
 import { categoryService } from '../../../services/categoryService';
-import { useSkeletonAnimation, SkeletonBar } from '../../../components/common/SkeletonLoader';
+import { SkeletonBar } from '../../../components/common/SkeletonLoader';
 
 const CategoryTab = () => {
-    useSkeletonAnimation();
     const [categories, setCategories] = useState<any[]>([]);
     const [newCatName, setNewCatName] = useState('');
     const [newCatIcon, setNewCatIcon] = useState('📦');

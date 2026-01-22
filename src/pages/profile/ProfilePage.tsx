@@ -2,10 +2,9 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut, Shield, Wallet, Settings, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProfile } from '../../hooks/useProfile';
-import { useSkeletonAnimation, SkeletonProfile } from '../../components/common/SkeletonLoader';
+import { SkeletonProfile } from '../../components/common/SkeletonLoader';
 
 const ProfilePage = () => {
-    useSkeletonAnimation(); // Ajoute l'animation CSS
     const { user, logout } = useAuth();
     const { data: profile, isLoading: profileLoading, error: profileError, refetch: retryFetchProfile } = useProfile(user?.id);
     const navigate = useNavigate();

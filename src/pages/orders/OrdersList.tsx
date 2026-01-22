@@ -9,13 +9,12 @@ import OrderTabs from '../../components/orders/OrderTabs';
 import OrderCard from '../../components/orders/OrderCard';
 import OrderDetailsModal from '../../components/orders/OrderDetailsModal';
 import OrderStatsBar from '../../components/orders/OrderStatsBar';
-import { useSkeletonAnimation, SkeletonOrderCard } from '../../components/common/SkeletonLoader';
+import { SkeletonOrderCard } from '../../components/common/SkeletonLoader';
 import { useOrders } from '../../hooks/useOrders';
 import { useOrderCounts } from '../../hooks/useOrderCounts';
 import { useDebounce } from '../../hooks/useDebounce';
 
 const OrdersList = () => {
-    useSkeletonAnimation();
     const { profile } = useAuth();
     const navigate = useNavigate();
 

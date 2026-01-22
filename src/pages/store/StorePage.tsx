@@ -1,16 +1,15 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Package, ShieldCheck, Heart, Calendar, Phone, DollarSign, TrendingUp } from 'lucide-react';
+import { ArrowLeft, MapPin, Package, ShieldCheck, Heart, Calendar, Phone, DollarSign, TrendingUp, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import ReviewCarousel from '../../components/reviews/ReviewCarousel';
 import ReviewsModal from '../../components/reviews/ReviewsModal';
 import StarRating from '../../components/reviews/StarRating';
-import { useSkeletonAnimation, SkeletonBar, SkeletonAvatar, SkeletonProductGrid } from '../../components/common/SkeletonLoader';
+import { SkeletonBar, SkeletonAvatar, SkeletonProductGrid } from '../../components/common/SkeletonLoader';
 import { useStore } from '../../hooks/useStore';
 import { useProducts } from '../../hooks/useProducts';
 
 const StorePage = () => {
-    useSkeletonAnimation();
     const { sellerId } = useParams<{ sellerId: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -34,7 +33,7 @@ const StorePage = () => {
     const {
         data: productsData,
         isLoading: isLoadingProducts,
-    } = useProducts({ sellerId: sellerId }, 50); // Fetch more for store page
+    } = useProducts({ sellerId: sellerId }, undefined); // Fetch more for store page
 
     const products = useMemo(() => {
         const allProducts = productsData?.pages.flatMap(page => page.products) || [];
@@ -141,7 +140,19 @@ const StorePage = () => {
     }
 
     if (!store) {
-        // ...
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-4">
+                <ShoppingBag size={48} className="text-gray-500 mb-4 opacity-50" />
+                <h2 className="text-xl font-semibold text-white mb-2">Boutique introuvable</h2>
+                <p className="text-gray-400">Cette boutique n'existe pas ou a été supprimée.</p>
+                <button
+                    onClick={() => navigate('/')}
+                    className="mt-6 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+                >
+                    Retour à l'accueil
+                </button>
+            </div>
+        );
     }
 
     return (

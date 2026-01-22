@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import logo from '../../assets/logo.png';
 import NotificationBell from './NotificationBell';
+import { SkeletonAvatar } from '../common/SkeletonLoader';
 
 const Header = () => {
     return (
