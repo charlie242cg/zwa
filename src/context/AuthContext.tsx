@@ -51,30 +51,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const logout = async () => {
         try {
-            console.log('[AuthContext] 🚪 Logging out...');
-            setLoading(true);
+            console.log('[AuthContext] 🚪 Logging out (Optimistic)...');
 
-            // 1. Sign out from Supabase
-            await supabase.auth.signOut();
-
-            // 2. Clear React state
+            // 0. Update UI immediately to prevent "Infinite Loading"
+            setLoading(false); // Ensure loading is false so App redirects to /auth
             setSession(null);
             setUser(null);
             setProfile(null);
             setProfileError(null);
             currentUserIdRef.current = null;
 
-            // 3. Clear TanStack Query cache (CRITICAL FIX)
-            console.log('[AuthContext] 🗑️ Clearing all cached data...');
+            // 1. Clear caches
+            console.log('[AuthContext] 🗑️ Clearing local cache...');
             queryClient.clear();
-
-            // 4. Clear session storage
             sessionStorage.clear();
 
-            console.log('[AuthContext] ✅ Logout complete');
+            // 2. Sign out from Supabase (Background)
+            // We don't await this to block the UI, just let it happen
+            try {
+                await supabase.auth.signOut();
+                console.log('[AuthContext] ✅ Supabase session terminated');
+            } catch (supaError) {
+                console.warn('[AuthContext] ⚠️ Supabase signOut warning (ignored):', supaError);
+            }
+
         } catch (error) {
             console.error("[AuthContext] ❌ Logout error:", error);
-        } finally {
+            // Even if error, force state clear
+            setSession(null);
+            setUser(null);
             setLoading(false);
         }
     };
