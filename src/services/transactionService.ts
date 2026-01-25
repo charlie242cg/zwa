@@ -213,9 +213,6 @@ export const transactionService = {
         return { data, error };
     },
 
-    /**
-     * Récupérer toutes les transactions (pour Admin)
-     */
     async getAllTransactions(params?: { type?: string, status?: string }) {
         let query = supabase
             .from('transactions')
@@ -227,5 +224,28 @@ export const transactionService = {
 
         const { data, error } = await query;
         return { data, error };
+    },
+
+    /**
+     * Facade pour créer un retrait facilement
+     */
+    async createWithdrawal(params: { userId: string, amount: number, method: string, phoneNumber: string }) {
+        // 1. Get current balance
+        const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', params.userId).single();
+        const currentBalance = profile?.wallet_balance || 0;
+
+        if (currentBalance < params.amount) {
+            return { error: new Error('Solde insuffisant') };
+        }
+
+        // 2. Create transaction
+        return await this.createWithdrawalTransaction({
+            userId: params.userId,
+            amount: params.amount,
+            method: params.method,
+            number: params.phoneNumber,
+            balanceAfter: currentBalance - params.amount,
+            fee: 0 // Free for now or calculate
+        });
     }
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, Share2, Heart, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { chatService } from '../../services/chatService';
@@ -43,6 +43,7 @@ const ProductDetailSkeleton = () => {
 const ProductDetail = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { user, profile } = useAuth();
 
     // Use the optimized hook
@@ -65,6 +66,17 @@ const ProductDetail = () => {
     const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
     const [touchStart, setTouchStart] = useState<number | null>(null);
     const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+    // Capture Affiliate Ref
+    useEffect(() => {
+        const ref = searchParams.get('ref');
+        if (ref) {
+            console.log('[ProductDetail] 🔗 Affiliate ref detected:', ref);
+            // Store in Session and Local for persistence
+            sessionStorage.setItem('zwa_affiliate_id', ref);
+            localStorage.setItem('zwa_affiliate_id', ref);
+        }
+    }, [searchParams]);
 
     // Add skeleton animation CSS
     useEffect(() => {
@@ -178,7 +190,7 @@ const ProductDetail = () => {
 
         setNegotiating(true);
 
-        const affiliateId = sessionStorage.getItem('zwa_affiliate_id');
+        const affiliateId = sessionStorage.getItem('zwa_affiliate_id') || localStorage.getItem('zwa_affiliate_id');
 
         const { data: conv, error } = await chatService.createConversation(
             user.id,
@@ -229,7 +241,7 @@ const ProductDetail = () => {
         console.log('[ProductDetail] 💳 Processing checkout with data:', checkoutData);
 
         try {
-            const affiliateId = sessionStorage.getItem('zwa_affiliate_id');
+            const affiliateId = sessionStorage.getItem('zwa_affiliate_id') || localStorage.getItem('zwa_affiliate_id');
 
             // Create order with product price and selected quantity
             const amount = product.price * quantity;
@@ -687,8 +699,6 @@ const ProductDetail = () => {
     );
 };
 
-
-
 const styles = {
     container: {
         background: 'var(--background)',
@@ -721,7 +731,6 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        // backdropFilter removed - causes crashes,
         cursor: 'pointer',
     },
     imageSection: {
@@ -779,7 +788,6 @@ const styles = {
         background: 'rgba(0,0,0,0.3)',
         padding: '6px 10px',
         borderRadius: '20px',
-        // backdropFilter removed - causes crashes,
     },
     dot: {
         width: '6px',
@@ -798,119 +806,105 @@ const styles = {
     priceRow: {
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px',
-        padding: '16px',
-        background: 'rgba(255,255,255,0.03)',
-        borderRadius: '16px',
-        border: '1px solid rgba(255,255,255,0.05)',
+        alignItems: 'flex-start',
+        marginBottom: '16px',
     },
     priceContainer: {
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: '6px',
-        flex: 1,
+    },
+    currentPriceGroup: {
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: '4px',
+    },
+    price: {
+        fontSize: '32px',
+        fontWeight: '900',
+        color: 'white',
+    },
+    currency: {
+        fontSize: '16px',
+        fontWeight: '600',
+        color: 'var(--text-secondary)',
     },
     promoPriceGroup: {
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        flexWrap: 'wrap' as const,
+        marginBottom: '4px',
     },
     originalPriceDetail: {
         fontSize: '14px',
-        fontWeight: '600',
         color: 'var(--text-secondary)',
         textDecoration: 'line-through',
-        opacity: 0.6,
     },
     discountBadge: {
-        background: 'rgba(255, 59, 48, 0.15)',
-        border: '1px solid rgba(255, 59, 48, 0.3)',
-        color: '#FF3B30',
-        padding: '3px 7px',
+        background: '#FF3B30',
+        color: 'white',
+        fontSize: '12px',
+        fontWeight: 'bold',
+        padding: '2px 6px',
         borderRadius: '6px',
-        fontSize: '11px',
-        fontWeight: '800',
-    },
-    currentPriceGroup: {
-        display: 'flex',
-        alignItems: 'baseline',
-        gap: '6px',
-    },
-    price: {
-        fontSize: '28px',
-        fontWeight: '900',
-        color: 'var(--primary)',
-        lineHeight: '1',
-    },
-    currency: {
-        fontSize: '14px',
-        fontWeight: '700',
-        color: 'var(--primary)',
     },
     moqBadge: {
-        background: 'rgba(138, 43, 226, 0.15)',
-        padding: '8px 14px',
-        borderRadius: '10px',
-        fontSize: '12px',
-        color: 'white',
-        border: '1px solid rgba(138, 43, 226, 0.3)',
-        fontWeight: '700',
-        whiteSpace: 'nowrap' as const,
+        background: 'rgba(255,255,255,0.05)',
+        padding: '6px 12px',
+        borderRadius: '12px',
+        fontSize: '13px',
+        color: 'var(--text-secondary)',
+        border: '1px solid rgba(255,255,255,0.1)',
     },
     title: {
         fontSize: '24px',
         fontWeight: '800',
-        marginBottom: '24px',
         color: 'white',
-        lineHeight: '1.2',
+        marginBottom: '24px',
+        lineHeight: '1.3',
     },
     sellerCard: {
         display: 'flex',
         alignItems: 'center',
+        gap: '12px',
         background: 'rgba(255,255,255,0.03)',
-        padding: '16px',
-        borderRadius: '20px',
-        border: '1px solid rgba(255,255,255,0.05)',
+        padding: '12px',
+        borderRadius: '16px',
         marginBottom: '32px',
+        border: '1px solid rgba(255,255,255,0.05)',
         cursor: 'pointer',
     },
     sellerAvatarContainer: {
         position: 'relative' as const,
-        marginRight: '12px',
     },
     sellerAvatar: {
         width: '48px',
         height: '48px',
-        background: 'var(--primary)',
         borderRadius: '50%',
+        background: 'var(--primary)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '18px',
+        fontSize: '20px',
         fontWeight: 'bold',
         color: 'white',
-        overflow: 'hidden' as const,
-    },
-    verifiedBadge: {
-        position: 'absolute' as const,
-        bottom: '-2px',
-        right: '-2px',
-        width: '20px',
-        height: '20px',
-        background: '#00CC66',
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        border: '2px solid #121212',
-        boxShadow: '0 2px 8px rgba(0, 204, 102, 0.4)',
+        overflow: 'hidden',
     },
     avatarImage: {
         width: '100%',
         height: '100%',
         objectFit: 'cover' as const,
+    },
+    verifiedBadge: {
+        position: 'absolute' as const,
+        bottom: -2,
+        right: -2,
+        background: 'white',
+        borderRadius: '50%',
+        width: '18px',
+        height: '18px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     sellerInfo: {
         flex: 1,
@@ -919,20 +913,24 @@ const styles = {
         fontSize: '16px',
         fontWeight: '700',
         color: 'white',
+        marginBottom: '2px',
     },
     sellerStats: {
         fontSize: '12px',
         color: 'var(--text-secondary)',
-        marginTop: '2px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
     },
     visitButton: {
-        background: 'none',
-        border: '1px solid var(--primary)',
-        color: 'var(--primary)',
-        padding: '6px 12px',
-        borderRadius: '8px',
-        fontSize: '13px',
+        background: 'rgba(255,255,255,0.1)',
+        border: 'none',
+        color: 'white',
+        fontSize: '12px',
         fontWeight: '600',
+        padding: '8px 12px',
+        borderRadius: '10px',
+        cursor: 'pointer',
     },
     section: {
         marginBottom: '32px',
@@ -940,189 +938,13 @@ const styles = {
     sectionTitle: {
         fontSize: '18px',
         fontWeight: '700',
-        marginBottom: '12px',
         color: 'white',
+        marginBottom: '12px',
     },
     description: {
         fontSize: '15px',
-        color: 'var(--text-secondary)',
+        color: 'rgba(255,255,255,0.8)',
         lineHeight: '1.6',
-    },
-    infoCard: {
-        display: 'flex',
-        gap: '12px',
-        background: 'rgba(138, 43, 226, 0.05)',
-        padding: '16px',
-        borderRadius: '16px',
-        border: '1px solid rgba(138, 43, 226, 0.1)',
-        fontSize: '14px',
-        color: 'var(--text-secondary)',
-        lineHeight: '1.4',
-        marginBottom: '32px',
-    },
-    inlineActions: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '12px',
-        marginTop: '12px',
-    },
-    quantitySection: {
-        background: 'linear-gradient(135deg, rgba(138, 43, 226, 0.05), rgba(255, 20, 147, 0.05))',
-        border: '1px solid rgba(138, 43, 226, 0.2)',
-        borderRadius: '20px',
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '16px',
-    },
-    quantityHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    quantityLabel: {
-        fontSize: '15px',
-        fontWeight: '700',
-        color: 'white',
-        letterSpacing: '0.5px',
-    },
-    minOrderBadge: {
-        fontSize: '11px',
-        fontWeight: '600',
-        color: 'var(--primary)',
-        background: 'rgba(138, 43, 226, 0.15)',
-        padding: '4px 10px',
-        borderRadius: '8px',
-    },
-    quantitySelector: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '20px',
-        padding: '8px 0',
-    },
-    quantityButton: {
-        width: '48px',
-        height: '48px',
-        background: 'rgba(138, 43, 226, 0.15)',
-        border: '2px solid rgba(138, 43, 226, 0.3)',
-        borderRadius: '14px',
-        color: 'white',
-        fontSize: '22px',
-        fontWeight: '800',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    },
-    quantityValueContainer: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        alignItems: 'center',
-        gap: '2px',
-    },
-    quantityInput: {
-        width: '100px',
-        fontSize: '32px',
-        fontWeight: '800',
-        color: 'var(--primary)',
-        lineHeight: '1',
-        background: 'transparent',
-        border: 'none',
-        borderBottom: '2px solid transparent',
-        textAlign: 'center' as const,
-        outline: 'none',
-        padding: '4px 0',
-        transition: 'all 0.2s ease',
-        // Remove spin buttons
-        MozAppearance: 'textfield' as const,
-        WebkitAppearance: 'none' as const,
-    },
-    quantityUnit: {
-        fontSize: '11px',
-        fontWeight: '600',
-        color: 'var(--text-secondary)',
-        textTransform: 'uppercase' as const,
-        letterSpacing: '1px',
-    },
-    quantityHint: {
-        fontSize: '11px',
-        color: 'var(--text-secondary)',
-        textAlign: 'center' as const,
-        marginTop: '4px',
-        opacity: 0.7,
-    },
-    priceBreakdown: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '8px',
-        paddingTop: '12px',
-        borderTop: '1px solid rgba(255,255,255,0.1)',
-    },
-    totalPriceRow: {
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    priceLabel: {
-        fontSize: '13px',
-        fontWeight: '600',
-        color: 'var(--text-secondary)',
-    },
-    totalPrice: {
-        fontSize: '24px',
-        fontWeight: '800',
-        color: 'var(--primary)',
-        textAlign: 'center' as const,
-        letterSpacing: '0.5px',
-    },
-    buyNowButton: {
-        width: '100%',
-        background: 'var(--primary)',
-        color: 'white',
-        border: 'none',
-        borderRadius: '16px',
-        fontSize: '16px',
-        fontWeight: '800',
-        padding: '18px',
-        boxShadow: '0 8px 25px rgba(138, 43, 226, 0.4)',
-        cursor: 'pointer',
-        transition: 'transform 0.2s',
-    },
-    negotiateButton: {
-        width: '100%',
-        background: 'rgba(255,255,255,0.08)',
-        color: 'white',
-        border: '1px solid rgba(255,255,255,0.2)',
-        borderRadius: '16px',
-        fontSize: '15px',
-        fontWeight: '700',
-        padding: '16px',
-        cursor: 'pointer',
-        transition: 'transform 0.2s',
-    },
-    chatButtonInline: {
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '8px',
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        color: 'white',
-        borderRadius: '16px',
-        fontSize: '15px',
-        fontWeight: '600',
-        padding: '14px',
-        cursor: 'pointer',
-    },
-    centered: {
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'var(--text-secondary)',
     },
     reviewsHeader: {
         display: 'flex',
@@ -1134,96 +956,207 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
+        background: 'rgba(255,204,0,0.1)',
+        padding: '6px 12px',
+        borderRadius: '12px',
     },
     ratingSummaryText: {
-        fontSize: '14px',
+        fontSize: '13px',
+        color: '#FFD700',
         fontWeight: '600',
-        color: 'var(--text-secondary)',
     },
-    reviewsSkeleton: {
+    inlineActions: {
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: '16px',
-    },
-    reviewSkeletonCard: {
-        display: 'flex',
         gap: '12px',
-        padding: '16px',
-        background: 'rgba(255,255,255,0.03)',
-        borderRadius: '16px',
+        marginBottom: '40px',
     },
-    skeletonImageArea: {
-        width: '100%',
-        height: '400px',
+    quantitySection: {
         background: 'rgba(255,255,255,0.03)',
+        borderRadius: '20px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid rgba(255,255,255,0.05)',
+    },
+    quantityHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '16px',
+    },
+    quantityLabel: {
+        fontSize: '16px',
+        fontWeight: '700',
+        color: 'white',
+    },
+    minOrderBadge: {
+        fontSize: '12px',
+        color: 'var(--text-secondary)',
+        background: 'rgba(255,255,255,0.05)',
+        padding: '4px 8px',
+        borderRadius: '6px',
+    },
+    quantitySelector: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        marginBottom: '12px',
+    },
+    quantityButton: {
+        width: '48px',
+        height: '48px',
+        borderRadius: '14px',
+        background: 'var(--card-bg)', // Using card background for buttons for better contrast
+        border: '1px solid rgba(255,255,255,0.1)',
+        color: 'white',
+        fontSize: '24px',
+        fontWeight: '300',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+    },
+    quantityValueContainer: {
+        flex: 1,
+        height: '48px',
+        background: 'rgba(0,0,0,0.2)',
+        borderRadius: '14px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         position: 'relative' as const,
-        overflow: 'hidden',
+        border: '1px solid rgba(255,255,255,0.05)',
     },
-    skeletonPulse: {
+    quantityInput: {
         width: '100%',
         height: '100%',
-        background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 100%)',
-        backgroundSize: '200% 100%',
-        animation: 'skeletonPulse 1.5s ease-in-out infinite',
+        background: 'transparent',
+        border: 'none',
+        color: 'white',
+        fontSize: '20px',
+        fontWeight: '700',
+        textAlign: 'center' as const,
+        outline: 'none',
+        paddingRight: '20px', // Make space for unit
     },
-    skeletonBar: {
-        background: 'rgba(255,255,255,0.05)',
-        borderRadius: '12px',
-        position: 'relative' as const,
-        overflow: 'hidden',
-    },
-    skeletonShine: {
+    quantityUnit: {
         position: 'absolute' as const,
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)',
-        backgroundSize: '200% 100%',
-        animation: 'skeletonPulse 1.5s ease-in-out infinite',
+        right: '16px',
+        fontSize: '14px',
+        color: 'rgba(255,255,255,0.4)',
+        pointerEvents: 'none' as const,
+    },
+    quantityHint: {
+        fontSize: '12px',
+        color: 'rgba(255,255,255,0.3)',
+        textAlign: 'center' as const,
+        margin: '0 0 16px 0',
+    },
+    priceBreakdown: {
+        borderTop: '1px solid rgba(255,255,255,0.05)',
+        paddingTop: '16px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-end',
+    },
+    priceLabel: {
+        fontSize: '14px',
+        color: 'var(--text-secondary)',
+    },
+    totalPriceRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+    },
+    totalPrice: {
+        fontSize: '24px',
+        fontWeight: '800',
+        color: 'var(--primary)',
+    },
+    buyNowButton: {
+        width: '100%',
+        background: 'linear-gradient(135deg, var(--primary) 0%, #a855f7 100%)',
+        color: 'white',
+        border: 'none',
+        padding: '16px',
+        borderRadius: '16px',
+        fontSize: '18px',
+        fontWeight: '800',
+        cursor: 'pointer',
+        marginBottom: '12px',
+        boxShadow: '0 8px 25px rgba(138, 43, 226, 0.4)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '10px',
+    },
+    negotiateButton: {
+        width: '100%',
+        background: 'rgba(255,255,255,0.1)',
+        color: 'white',
+        border: '1px solid rgba(255,255,255,0.1)',
+        padding: '16px',
+        borderRadius: '16px',
+        fontSize: '16px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+    },
+    chatButtonInline: {
+        width: '100%',
+        background: 'rgba(0, 204, 102, 0.15)',
+        color: '#00CC66',
+        border: 'none',
+        padding: '16px',
+        borderRadius: '16px',
+        fontSize: '16px',
+        fontWeight: '700',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+        marginTop: '12px',
     },
     similarSection: {
-        padding: '32px 20px',
-        marginTop: '32px',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
+        marginTop: '40px',
     },
     similarHeader: {
-        marginBottom: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '16px',
     },
     similarTitle: {
-        fontSize: '20px',
+        fontSize: '18px',
         fontWeight: '800',
         color: 'white',
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
+        gap: '8px',
     },
     similarGrid: {
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: '16px',
+        gap: '12px',
     },
     productCard: {
         background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '16px',
         overflow: 'hidden',
+        border: '1px solid rgba(255,255,255,0.05)',
         cursor: 'pointer',
-        transition: 'all 0.3s',
-    },
-    productCardSkeleton: {
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '16px',
-        overflow: 'hidden',
-        padding: '12px',
     },
     productImage: {
         width: '100%',
-        height: '160px',
-        position: 'relative' as const,
-        overflow: 'hidden',
-        background: 'rgba(0,0,0,0.2)',
+        aspectRatio: '1/1',
+        background: '#000',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     productImg: {
         width: '100%',
@@ -1231,57 +1164,93 @@ const styles = {
         objectFit: 'cover' as const,
     },
     productPlaceholder: {
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '48px',
+        fontSize: '32px',
     },
     productInfo: {
         padding: '12px',
     },
     productName: {
         fontSize: '14px',
-        fontWeight: '700',
+        fontWeight: '600',
         color: 'white',
         marginBottom: '6px',
+        whiteSpace: 'nowrap' as const,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap' as const,
     },
     productPrice: {
-        fontSize: '16px',
+        fontSize: '15px',
         fontWeight: '800',
         color: 'var(--primary)',
         marginBottom: '4px',
     },
     productMoq: {
-        fontSize: '11px',
-        fontWeight: '600',
+        fontSize: '10px',
         color: 'var(--text-secondary)',
     },
-    skeletonProductImage: {
+    // Skeleton Styles
+    skeletonImageArea: {
         width: '100%',
-        height: '140px',
+        aspectRatio: '1/1',
         background: 'rgba(255,255,255,0.05)',
-        borderRadius: '12px',
-        marginBottom: '8px',
         position: 'relative' as const,
         overflow: 'hidden',
     },
-    loadMoreButton: {
+    skeletonBar: {
+        background: 'rgba(255,255,255,0.05)',
+        borderRadius: '8px',
+        position: 'relative' as const,
+        overflow: 'hidden',
+    },
+    skeletonPulse: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
         width: '100%',
-        padding: '16px',
-        marginTop: '20px',
-        background: 'rgba(138, 43, 226, 0.1)',
-        border: '2px solid rgba(138, 43, 226, 0.3)',
+        height: '100%',
+        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)',
+        animation: 'skeletonPulse 1.5s infinite',
+    },
+    skeletonShine: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)',
+        animation: 'skeletonPulse 1.5s infinite',
+    },
+    productCardSkeleton: {
+        background: 'rgba(255,255,255,0.03)',
         borderRadius: '16px',
-        color: 'white',
-        fontSize: '15px',
-        fontWeight: '700',
-        cursor: 'pointer',
-        transition: 'all 0.3s',
+        overflow: 'hidden',
+        paddingBottom: '12px',
+    },
+    skeletonProductImage: {
+        width: '100%',
+        aspectRatio: '1/1',
+        background: 'rgba(255,255,255,0.05)',
+        position: 'relative' as const,
+        overflow: 'hidden',
+    },
+    centered: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        color: 'var(--text-secondary)',
+    },
+    reviewsSkeleton: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '12px',
+    },
+    reviewSkeletonCard: {
+        display: 'flex',
+        gap: '12px',
+        padding: '12px',
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: '12px',
     }
 };
 

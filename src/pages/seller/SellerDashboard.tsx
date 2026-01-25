@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import StarRating from '../../components/reviews/StarRating';
 import { SkeletonBar } from '../../components/common/SkeletonLoader';
 import KYCRequestModal from '../../components/kyc/KYCRequestModal';
+import WithdrawalRequestModal from '../../components/finance/WithdrawalRequestModal';
 import { useSellerStats } from '../../hooks/useSellerStats';
 import { useProducts } from '../../hooks/useProducts';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,6 +18,7 @@ const SellerDashboard = () => {
     const queryClient = useQueryClient();
 
     const [kycModalOpen, setKycModalOpen] = useState(false);
+    const [withdrawalOpen, setWithdrawalOpen] = useState(false);
 
     // TanStack Query Hooks
     const { data: sellerData, isLoading: statsLoading, refetch: refetchStats } = useSellerStats(user?.id);
@@ -120,7 +122,26 @@ const SellerDashboard = () => {
             {/* Stats Cards */}
             <div style={styles.statsGrid}>
                 <div style={styles.statCard} className="premium-card">
-                    <DollarSign size={20} color="var(--primary)" />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <DollarSign size={20} color="var(--primary)" />
+                        <button
+                            onClick={() => setWithdrawalOpen(true)}
+                            disabled={!profile?.kyc_verified && !profile?.is_verified_seller}
+                            style={{
+                                background: (profile?.kyc_verified || profile?.is_verified_seller) ? 'rgba(138, 43, 226, 0.2)' : 'rgba(255,255,255,0.05)',
+                                color: (profile?.kyc_verified || profile?.is_verified_seller) ? 'var(--primary)' : 'var(--text-secondary)',
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '4px 8px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                cursor: (profile?.kyc_verified || profile?.is_verified_seller) ? 'pointer' : 'not-allowed',
+                            }}
+                            title={(!profile?.kyc_verified && !profile?.is_verified_seller) ? "Veuillez vérifier votre identité pour retirer" : "Retirer mes gains"}
+                        >
+                            Retirer
+                        </button>
+                    </div>
                     <div style={styles.statValue}>{stats.totalSales.toLocaleString()}</div>
                     <div style={styles.statLabel}>Ventes (FCFA)</div>
                 </div>
@@ -234,6 +255,17 @@ const SellerDashboard = () => {
                 existingRequest={kycRequest?.status === 'rejected' ? kycRequest : undefined}
                 onSuccess={() => {
                     setKycModalOpen(false);
+                    refetchStats();
+                }}
+            />
+
+            <WithdrawalRequestModal
+                isOpen={withdrawalOpen}
+                onClose={() => setWithdrawalOpen(false)}
+                userId={user?.id || ''}
+                balance={profile?.wallet_balance || stats.totalSales || 0}
+                userRole="seller"
+                onSuccess={() => {
                     refetchStats();
                 }}
             />
