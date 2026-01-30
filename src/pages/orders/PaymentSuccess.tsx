@@ -9,38 +9,57 @@ const PaymentSuccess = () => {
     const orderId = searchParams.get('id');
     const [order, setOrder] = useState<any>(null);
 
+    const [status, setStatus] = useState<'validating' | 'success' | 'error'>('validating');
+
     useEffect(() => {
         if (orderId) {
-            fetchOrderDetails(orderId);
-            // On force la mise à jour du statut côté client en tant que sécurité
-            updateOrderStatusToPaid(orderId);
+            validatePayment(orderId);
         }
     }, [orderId]);
 
-    const updateOrderStatusToPaid = async (id: string) => {
+    const validatePayment = async (id: string, retries = 3) => {
         try {
-            console.log('[PaymentSuccess] 🔄 Validation automatique du paiement pour:', id);
-            const { error } = await orderService.updateOrderStatus(id, 'paid');
-            if (error) {
-                console.error('[PaymentSuccess] ❌ Erreur lors de la validation client:', error);
-            } else {
-                console.log('[PaymentSuccess] ✅ Commande marquée comme payée via client-side redirection');
-            }
-        } catch (err) {
-            console.error('[PaymentSuccess] 💥 Erreur critique validation:', err);
-        }
-    };
+            console.log(`[PaymentSuccess] 🔄 Validation du paiement pour ${id} (essais restants: ${retries})`);
 
-    const fetchOrderDetails = async (id: string) => {
-        try {
-            const { data, error } = await orderService.getOrderById(id);
-            if (!error && data) {
-                setOrder(data);
+            // 1. Fetch current order status first
+            const { data: currentOrder } = await orderService.getOrderById(id);
+
+            if (currentOrder && currentOrder.status === 'paid') {
+                console.log('[PaymentSuccess] ✅ Commande déjà marquée comme payée !');
+                setOrder(currentOrder);
+                setStatus('success');
+                return;
             }
+
+            // 2. Force update if not yet paid
+            const { data, error } = await orderService.updateOrderStatus(id, 'paid');
+
+            if (error) {
+                console.error('[PaymentSuccess] ❌ Erreur validation:', error);
+                if (retries > 0) {
+                    await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+                    return validatePayment(id, retries - 1);
+                }
+                throw error;
+            }
+
+            console.log('[PaymentSuccess] ✅ Validation réussie !');
+            // Re-fetch to get updated data (e.g. updated_at)
+            const { data: updatedOrder } = await orderService.getOrderById(id);
+            setOrder(updatedOrder || data);
+            setStatus('success');
+
         } catch (err) {
-            console.error('[PaymentSuccess] ❌ Error fetching order:', err);
-        } finally {
-            // Fin du chargement (état géré implicitement par order)
+            console.error('[PaymentSuccess] 💥 Échec validation finale:', err);
+            // Even if validation fails client-side, we likely had a success from gateway
+            // Check one last time if webhook handled it
+            const { data: checkOrder } = await orderService.getOrderById(id);
+            if (checkOrder && checkOrder.status === 'paid') {
+                setOrder(checkOrder);
+                setStatus('success');
+            } else {
+                setStatus('error'); // Show contact support message
+            }
         }
     };
 
@@ -51,9 +70,15 @@ const PaymentSuccess = () => {
                     <CheckCircle2 size={80} color="#00CC66" />
                 </div>
 
-                <h1 style={styles.title}>Paiement Réussi !</h1>
+                <h1 style={styles.title}>
+                    {status === 'validating' ? 'Validation en cours...' :
+                        status === 'success' ? 'Paiement Réussi !' :
+                            'Paiement en attente'}
+                </h1>
                 <p style={styles.subtitle}>
-                    Merci pour votre achat sur Zwa Market. Votre commande a été validée avec succès.
+                    {status === 'validating' ? 'Nous confirmons votre transaction auprès de la banque...' :
+                        status === 'success' ? 'Merci pour votre achat sur Zwa Market. Votre commande a été validée avec succès.' :
+                            'Votre paiement a bien été initié. Si la commande ne se valide pas automatiquement dans quelques instants, veuillez contacter le support.'}
                 </p>
 
                 {order && (

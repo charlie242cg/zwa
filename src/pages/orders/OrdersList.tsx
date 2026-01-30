@@ -51,67 +51,85 @@ const OrdersList = () => {
         return ordersData?.pages.flatMap(page => page.data) || [];
     }, [ordersData]);
 
+    const [processingId, setProcessingId] = useState<string | null>(null);
+
     const handleAction = async (orderId: string, action: string) => {
-        if (action === 'ship') {
-            const { otp, error } = await orderService.shipOrder(orderId);
-            if (error) {
-                alert("Erreur lors de l'expédition: " + error.message);
-            } else {
-                alert(`✅ Commande marquée comme expédiée !\n\n🔑 Code de validation : ${otp}\n\nL'acheteur devra vous communiquer ce code à la livraison.`);
-                refreshAll();
-            }
-        } else if (action === 'deliver') {
-            const otp = prompt("Entrez le code OTP communiqué par l'acheteur:");
-            if (otp) {
-                const { error } = await orderService.deliverOrder(orderId, otp);
+        // Prevent multiple simultaneous actions
+        if (processingId) return;
+
+        try {
+            setProcessingId(orderId);
+
+            if (action === 'ship') {
+                const { otp, error } = await orderService.shipOrder(orderId);
                 if (error) {
-                    alert("❌ " + error.message);
+                    alert("Erreur lors de l'expédition: " + error.message);
                 } else {
-                    alert("🎉 Livraison validée avec succès !\n\n💰 Les fonds ont été transférés sur votre portefeuille.");
+                    alert(`✅ Commande marquée comme expédiée !\n\n🔑 Code de validation : ${otp}\n\nL'acheteur devra vous communiquer ce code à la livraison.`);
                     refreshAll();
                 }
-            }
-        } else if (action === 'cancel') {
-            if (confirm("Êtes-vous sûr de vouloir annuler cette commande ?")) {
-                alert("Fonctionnalité d'annulation à implémenter");
-            }
-        } else if (action === 'review') {
-            const order = orders.find(o => o.id === orderId);
-            if (order) {
-                setSelectedOrderForReview(order);
-                setReviewModalOpen(true);
-            }
-        } else if (action === 'pay') {
-            // Reprendre le paiement d'une commande en attente
-            const order = orders.find(o => o.id === orderId);
-            if (!order) return;
-
-            // Vérifier si c'est un achat direct (via page produit/lien affilié)
-            const isDirectPurchase = order.notes?.includes('Achat direct');
-
-            // Vérifier si le lien de paiement existe et n'est pas expiré
-            const hasValidPaymentUrl = order.yabetoo_payment_url &&
-                (!order.expires_at || new Date(order.expires_at) > new Date());
-
-            if (hasValidPaymentUrl) {
-                // Lien valide -> rediriger vers le paiement
-                window.location.href = order.yabetoo_payment_url;
-            } else if (isDirectPurchase) {
-                // Achat direct avec lien expiré -> recréer un nouveau lien
-                try {
-                    const { checkout_url, error } = await paymentService.createYabetooCheckout(orderId);
+            } else if (action === 'deliver') {
+                const otp = prompt("Entrez le code OTP communiqué par l'acheteur:");
+                if (otp) {
+                    const { error } = await orderService.deliverOrder(orderId, otp);
                     if (error) {
-                        alert("Erreur lors de la création du paiement. Réessayez.");
-                    } else if (checkout_url) {
-                        window.location.href = checkout_url;
+                        alert("❌ " + error.message);
+                    } else {
+                        alert("🎉 Livraison validée avec succès !\n\n💰 Les fonds ont été transférés sur votre portefeuille.");
+                        refreshAll();
                     }
-                } catch {
-                    alert("Erreur inattendue. Veuillez réessayer.");
                 }
-            } else {
-                // Lien personnalisé (via chat) expiré -> rouvrir le chat avec le vendeur
-                navigate(`/chat/${order.seller_id}`);
+            } else if (action === 'cancel') {
+                if (confirm("Êtes-vous sûr de vouloir annuler cette commande ?")) {
+                    alert("Fonctionnalité d'annulation à implémenter");
+                }
+            } else if (action === 'review') {
+                const order = orders.find(o => o.id === orderId);
+                if (order) {
+                    setSelectedOrderForReview(order);
+                    setReviewModalOpen(true);
+                }
+            } else if (action === 'pay') {
+                // Reprendre le paiement d'une commande en attente
+                const order = orders.find(o => o.id === orderId);
+                if (!order) return;
+
+                // Vérifier si c'est un achat direct (via page produit/lien affilié)
+                const isDirectPurchase = order.notes?.includes('Achat direct');
+
+                // Vérifier si le lien de paiement existe et n'est pas expiré
+                const hasValidPaymentUrl = order.yabetoo_payment_url &&
+                    (!order.expires_at || new Date(order.expires_at) > new Date());
+
+                if (hasValidPaymentUrl) {
+                    // Lien valide -> rediriger vers le paiement
+                    console.log('Redirecting to existing payment URL:', order.yabetoo_payment_url);
+                    window.location.href = order.yabetoo_payment_url;
+                } else if (isDirectPurchase) {
+                    // Achat direct avec lien expiré -> recréer un nouveau lien
+                    try {
+                        const { checkout_url, error } = await paymentService.createYabetooCheckout(orderId);
+                        if (error) {
+                            alert("Erreur lors de la création du paiement. Réessayez.");
+                        } else if (checkout_url) {
+                            console.log('Redirecting to new checkout URL:', checkout_url);
+                            window.location.href = checkout_url;
+                        } else {
+                            alert("Erreur: URL de paiement invalide.");
+                        }
+                    } catch {
+                        alert("Erreur inattendue. Veuillez réessayer.");
+                    }
+                } else {
+                    // Lien personnalisé (via chat) expiré -> rouvrir le chat avec le vendeur
+                    navigate(`/chat/${order.seller_id}`);
+                }
             }
+        } catch (err) {
+            console.error("Action error:", err);
+            alert("Une erreur est survenue.");
+        } finally {
+            setProcessingId(null);
         }
     };
 

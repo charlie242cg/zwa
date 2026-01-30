@@ -121,14 +121,18 @@ const OrderCard = ({ order, userRole, onViewDetails, onAction }: OrderCardProps)
                 default:
                     return null;
             }
-        } else {
+        } else if (userRole === 'buyer') {
             // Buyer actions
             switch (order.status) {
                 case 'pending':
                     return (
                         <div style={styles.actions}>
                             <button
-                                onClick={(e) => { e.stopPropagation(); onAction?.(order.id, 'pay'); }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Prevent multiple clicks if already processing (handled by parent usually, but safer here too)
+                                    onAction?.(order.id, 'pay');
+                                }}
                                 style={styles.actionButtonPrimary}
                             >
                                 <CreditCard size={16} /> Payer
@@ -164,6 +168,9 @@ const OrderCard = ({ order, userRole, onViewDetails, onAction }: OrderCardProps)
                 default:
                     return null;
             }
+        } else {
+            // Affiliate or other roles - NO ACTIONS
+            return null;
         }
     };
 

@@ -26,6 +26,9 @@ export const AuthContext = createContext<AuthContextType>({
 // Generate unique tab ID for multi-tab coordination
 const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
+// Timeout for profile fetching to prevent "infinite loading"
+const PROFILE_FETCH_TIMEOUT = 15000; // 15 seconds
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const queryClient = useQueryClient();
     const [session, setSession] = useState<Session | null>(null);
@@ -89,11 +92,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             console.log(`[AuthContext] 📡 Fetching profile for UID: ${userId} (retries left: ${retries})`);
             setProfileError(null);
 
-            const { data, error } = await supabase
+            // Wrap Supabase call in a timeout promise
+            const fetchPromise = supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
                 .single();
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Profile fetch timed out')), PROFILE_FETCH_TIMEOUT)
+            );
+
+            const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
             if (error) {
                 console.error("[AuthContext] ❌ Error fetching profile:", error.message);
@@ -107,7 +117,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 const errorMsg = `Impossible de charger votre profil: ${error.message}`;
                 console.error("[AuthContext] 🚨 All retries exhausted:", errorMsg);
                 setProfileError(errorMsg);
-                setProfile(null);
+                // Don't clear profile if we already have one, might be a temporary glitch
                 return null;
             }
 
@@ -132,7 +142,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const errorMsg = `Erreur inattendue: ${err.message || 'Veuillez réessayer'}`;
             console.error("[AuthContext] 🚨 All retries exhausted after exception:", errorMsg);
             setProfileError(errorMsg);
-            setProfile(null);
+            // Don't completely kill the session for a temporary network error if we can help it
+            // But we do need to stop loading
+            setLoading(false);
             return null;
         }
     };
@@ -160,6 +172,72 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    // Refs to access latest state in event listeners without re-binding
+    const sessionRef = useRef(session);
+    const userRef = useRef(user);
+    const profileRef = useRef(profile);
+
+    // Keep refs updated
+    useEffect(() => {
+        sessionRef.current = session;
+        userRef.current = user;
+        profileRef.current = profile;
+    }, [session, user, profile]);
+
+    // Keep session alive and check on visibility change
+    useEffect(() => {
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible') {
+                console.log('[AuthContext] 👁️ App became visible (waking up)');
+
+                // 1. Check network status
+                if (!navigator.onLine) {
+                    console.warn('[AuthContext] ⚠️ App woke up but is OFFLINE');
+                    return;
+                }
+
+                // 2. Refresh session if needed
+                const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    console.error('[AuthContext] ❌ Error refreshing session on wake:', error);
+                } else if (currentSession) {
+                    // Update connection state?
+                    if (currentSession.access_token !== sessionRef.current?.access_token) {
+                        console.log('[AuthContext] 🔄 Token refreshed on wake');
+                        setSession(currentSession);
+                        setUser(currentSession.user);
+                    } else {
+                        console.log('[AuthContext] ✅ Session matches active session');
+                    }
+                } else {
+                    console.log('[AuthContext] ⚠️ No active session on wake');
+                }
+            }
+        };
+
+        const handleOnline = () => {
+            console.log('[AuthContext] 🌐 App is ONLINE');
+            // Could retry fetch here if needed
+            if (userRef.current?.id && !profileRef.current) {
+                retryFetchProfile();
+            }
+        };
+
+        const handleOffline = () => {
+            console.log('[AuthContext] 🔌 App is OFFLINE');
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []); // Empty dependency array = stable listeners!
 
     useEffect(() => {
         let mounted = true;

@@ -30,6 +30,6 @@ export const useOrders = (params: {
             return loadedCount < lastPage.count ? allPages.length : undefined;
         },
         enabled: !!params.userId,
-        staleTime: 60000, // 1 minute
+        staleTime: 1000, // 1 second - refresh often to catch status changes
     });
 };
